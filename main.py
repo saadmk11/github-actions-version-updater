@@ -63,9 +63,13 @@ class GitHubActionUpgrade:
 
         if self.workflow_updated:
             new_branch = f'gh-action-upgrade-{int(time.time())}'
+            base = f"https://{self.actor}:{self.token}@github.com/{self.repository}.git"
 
             subprocess.run(['echo', '::group::Create New Branch'])
 
+            subprocess.run(
+                ['git', 'remote', 'set-url', 'origin', base]
+            )
             subprocess.run(
                 ['git', 'checkout', self.base_branch]
             )
@@ -75,7 +79,7 @@ class GitHubActionUpgrade:
             subprocess.run(['git', 'add', '.'])
             subprocess.run(['git', 'commit', '-m', 'Upgrade GitHub Action'])
 
-            base = f"https://{self.actor}:{self.token}@github.com/{self.repository}.git"
+
             _print_message('warning', base)
             _print_message('warning', self.actor)
 
