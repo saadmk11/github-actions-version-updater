@@ -196,13 +196,12 @@ if __name__ == '__main__':
     # Default environment variable from GitHub
     # https://docs.github.com/en/actions/configuring-and-managing-workflows/using-environment-variables
     repository = os.environ['GITHUB_REPOSITORY']
+    base_branch = os.environ['GITHUB_REF']
     # Token provided from the workflow
     token = os.environ.get('GITHUB_TOKEN')
     # Committer username and email address
     username = os.environ['INPUT_COMMITTER_USERNAME']
     email = os.environ['INPUT_COMMITTER_EMAIL']
-    # base branch for workflow
-    base_branch = os.environ['INPUT_BASE_BRANCH']
 
     # Group: Configure Git
     subprocess.run(['echo', '::group::Configure Git'])
