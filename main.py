@@ -160,7 +160,7 @@ class GitHubActionUpgrade:
         if response.status_code == 200:
             response_data = response.json()
 
-            for workflow in response_data:
+            for workflow in response_data['workflows']:
                 data.append(workflow['path'])
         else:
             msg = (
