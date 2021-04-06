@@ -75,7 +75,7 @@ class GitHubActionUpgrade:
             subprocess.run(['git', 'add', '.'])
             subprocess.run(['git', 'commit', '-m', 'Upgrade GitHub Action'])
 
-            base = f"https://{self.actor}:{self.token}@github.com/${self.repository}.git"
+            base = f"https://{self.actor}:{self.token}@github.com/{self.repository}.git"
             _print_message('warning', base)
 
             subprocess.run(['git', 'push', base, new_branch])
