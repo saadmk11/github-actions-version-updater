@@ -211,7 +211,7 @@ if __name__ == '__main__':
     repository = os.environ['GITHUB_REPOSITORY']
     base_branch = os.environ['GITHUB_REF']
     # Token provided from the workflow
-    token = os.environ.get('GITHUB_TOKEN')
+    token = os.environ.get('INPUT_TOKEN')
     # Committer username and email address
     username = os.environ['INPUT_COMMITTER_USERNAME']
     email = os.environ['INPUT_COMMITTER_EMAIL']
