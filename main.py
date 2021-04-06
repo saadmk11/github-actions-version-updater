@@ -40,6 +40,9 @@ class GitHubActionUpgrade:
                     action_repository, version = action.split('@')
                     latest_release = self.get_latest_release(action_repository)
 
+                    if not latest_release:
+                        continue
+
                     updated_action = f'{action_repository}@{latest_release["tag_name"]}'
 
                     if action != updated_action:
