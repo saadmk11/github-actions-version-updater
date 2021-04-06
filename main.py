@@ -77,6 +77,7 @@ class GitHubActionUpgrade:
 
             base = f"https://{self.actor}:{self.token}@github.com/{self.repository}.git"
             _print_message('warning', base)
+            _print_message('warning', self.actor)
 
             subprocess.run(['git', 'push', '-u', base, new_branch])
 
@@ -229,7 +230,7 @@ if __name__ == '__main__':
 
     # Initialize the Changelog CI
     action_upgrade = GitHubActionUpgrade(
-        repository, base_branch, token, actor
+        repository, base_branch, token, username
     )
     action_upgrade.run()
 
