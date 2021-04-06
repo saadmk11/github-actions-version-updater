@@ -64,6 +64,13 @@ class GitHubActionUpgrade:
             new_branch = f'gh-action-upgrade-{int(time.time())}'
 
             subprocess.run(['echo', '::group::Create New Branch'])
+
+            subprocess.run(
+                [
+                    'git', 'remote', 'add',
+                    'origin', f'git@github.com:{self.repository}.git'
+                ]
+            )
             subprocess.run(
                 ['git', 'checkout', self.base_branch]
             )
@@ -76,7 +83,10 @@ class GitHubActionUpgrade:
 
             subprocess.run(['echo', '::endgroup::'])
 
-            self.create_pull_request(new_branch, comment)
+            current_branch = subprocess.check_output(['git', 'branch'])
+
+            if new_branch in str(current_branch):
+                self.create_pull_request(new_branch, comment)
 
 
     def create_pull_request(self, branch_name, body):
