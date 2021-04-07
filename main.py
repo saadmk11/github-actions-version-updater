@@ -180,7 +180,7 @@ class GitHubActionUpgrade:
             # if there is no previous release API will return 404 Not Found
             msg = (
                 f'Could not find any release for '
-                f'{action_repository}, status code: {response.status_code}'
+                f'"{action_repository}", status code: {response.status_code}'
             )
             print_message(msg, message_type='warning')
 
