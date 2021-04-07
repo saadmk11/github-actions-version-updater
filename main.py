@@ -148,7 +148,8 @@ class GitHubActionUpgrade:
     def generate_comment_line(self, action_repository, latest_release):
         """Generate Comment line for pull request body"""
         return (
-            f"* **[{action_repository}]({self.github_url + action_repository})** published a new release "
+            f"* **[{action_repository}]({self.github_url + action_repository})** "
+            "published a new release "
             f"[{latest_release['tag_name']}]({latest_release['html_url']}) "
             f"on {latest_release['published_at']}\n"
         )
