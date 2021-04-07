@@ -261,10 +261,10 @@ if __name__ == '__main__':
 
     print_message('', message_type='endgroup')
 
-    # Group: Generate Changelog
+    # Group: Run Upgrade GitHub Actions
     print_message('Upgrade GitHub Actions', message_type='group')
 
-    # Initialize the Changelog CI
+    # Initialize GitHubActionUpgrade
     action_upgrade = GitHubActionUpgrade(
         repository, base_branch, token
     )
