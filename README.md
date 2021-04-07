@@ -52,7 +52,7 @@ jobs:
           token: ${{ secrets.WORKFLOW_SECRET }}
 
       - name: Run GitHub Action Updater
-        uses: saadmk11/github-action-upgrade@main
+        uses: saadmk11/github-action-upgrade@v0.5.0
         with:
           # Optional, This will be used to configure git
           # defaults to `github-actions[bot]` if not provided
