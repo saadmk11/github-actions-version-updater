@@ -232,7 +232,7 @@ def print_message(message, message_type=None):
     if message_type == 'endgroup':
         return subprocess.run(['echo', '::endgroup::'])
 
-    return subprocess.run(['echo', f'::{type}::{message}'])
+    return subprocess.run(['echo', f'::{message_type}::{message}'])
 
 
 if __name__ == '__main__':
