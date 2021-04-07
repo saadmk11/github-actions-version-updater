@@ -1,5 +1,5 @@
 name: GitHub Action Updater
-description: GitHub Action Updater updates GitHub action version and creates a pull request with the changes.
+description: GitHub Action Updater upgrades GitHub Action versions and creates a pull request with the changes.
 author: Maksudul Haque
 branding:
   icon: 'upload-cloud'
@@ -14,7 +14,7 @@ inputs:
     required: false
     default: 'github-actions[bot]@users.noreply.github.com'
   ignore:
-    description: 'JSON string with the list of actions that should be ignored'
+    description: 'A JSON array which denotes the actions that should not be upgraded'
     required: false
     default: '[]'
   token:

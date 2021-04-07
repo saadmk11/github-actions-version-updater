@@ -8,6 +8,7 @@ import yaml
 
 
 class GitHubActionUpgrade:
+    """Main class that checks for updates and creates pull request"""
 
     github_api_url = 'https://api.github.com'
     github_url = 'https://github.com/'
@@ -22,6 +23,7 @@ class GitHubActionUpgrade:
 
     @staticmethod
     def get_ignored_actions(json_string):
+        """Validate json string and return a set of actions"""
         try:
             ignore = json.loads(json_string)
 
@@ -70,6 +72,7 @@ class GitHubActionUpgrade:
 
                     data = yaml.load(file_data, Loader=yaml.FullLoader)
                     old_action_set = set(self.get_all_actions(data))
+                    # Remove ignored actions
                     old_action_set.difference_update(self.ignore_actions)
 
                     for action in old_action_set:
@@ -118,7 +121,6 @@ class GitHubActionUpgrade:
 
             except Exception:
                 print_message(f'Skipping "{workflow_path}"')
-                pass
 
         if self.workflow_updated:
             # Use timestamp to ensure uniqueness of the new branch
