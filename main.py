@@ -104,7 +104,7 @@ class GitHubActionUpgrade:
             print_message('', message_type='endgroup')
 
             current_branch = subprocess.check_output(
-                ['git', 'branch', '--show-current']
+                ['git', 'rev-parse', '--abbrev-ref', 'HEAD']
             )
 
             if new_branch in str(current_branch):
