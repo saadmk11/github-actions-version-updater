@@ -19,7 +19,7 @@ class GitHubActionUpgrade:
 
     def run(self):
         workflows = self.get_workflows()
-        comment = ''
+        comment = '#### GitHub Actions Version Upgrades\n'
 
         if not workflows:
             _print_message(
@@ -56,7 +56,7 @@ class GitHubActionUpgrade:
                         updated_config = file_data.replace(
                             action, updated_action
                         )
-                        file.truncate(0)
+                        file.seek(0, 0)
                         file.write(updated_config)
                         self.workflow_updated = True
 
@@ -88,7 +88,7 @@ class GitHubActionUpgrade:
         """Create pull request on GitHub"""
         url = f'{self.github_api_url}/repos/{self.repository}/pulls'
         payload = {
-            'title': 'Upgrade GitHub Action',
+            'title': 'Upgrade GitHub Action Workflow Versions',
             'head': branch_name,
             'base': self.base_branch,
             'body': body,
