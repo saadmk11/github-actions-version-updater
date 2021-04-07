@@ -37,7 +37,10 @@ class GitHubActionUpgrade:
                 )
         except Exception:
             print_message(
-                f'Invalid input format for "ignore"',
+                (
+                    'Invalid input format for "ignore", '
+                    'expected JSON array of strings'
+                ),
                 message_type='error'
             )
         return set()
