@@ -137,7 +137,7 @@ class GitHubActionUpgrade:
 
         if response.status_code == 201:
             html_url = response.json()['html_url']
-            print_message(f'Pull request created at {html_url}')
+            print_message(f'Pull request opened at {html_url}')
         else:
             msg = (
                 f'Could not create a pull request on '
