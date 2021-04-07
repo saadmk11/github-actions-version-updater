@@ -35,6 +35,7 @@ class GitHubActionUpgrade:
                 file_data = file.read()
                 data = yaml.load(file_data, Loader=yaml.FullLoader)
                 old_action_set = set(self.get_all_actions(data))
+                updated_config = file_data
 
                 for action in old_action_set:
                     action_repository, version = action.split('@')
@@ -53,11 +54,12 @@ class GitHubActionUpgrade:
                         comment += self.generate_comment_line(
                             action_repository, latest_release
                         )
-                        updated_config = file_data.replace(
+                        updated_config = updated_config.replace(
                             action, updated_action
                         )
-                        file.seek(0, 0)
+                        file.seek(0)
                         file.write(updated_config)
+                        file.truncate()
                         self.workflow_updated = True
 
         if self.workflow_updated:
