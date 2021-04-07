@@ -11,11 +11,10 @@ class GitHubActionUpgrade:
     github_api_url = 'https://api.github.com'
     action_label = 'uses'
 
-    def __init__(self, repository, base_branch, token, actor):
+    def __init__(self, repository, base_branch, token):
         self.repository = repository
         self.base_branch = base_branch
         self.token = token
-        self.actor = actor
         self.workflow_updated = False
 
     def run(self):
@@ -63,13 +62,9 @@ class GitHubActionUpgrade:
 
         if self.workflow_updated:
             new_branch = f'gh-action-upgrade-{int(time.time())}'
-            base = f"https://{self.actor}:{self.token}@github.com/{self.repository}.git"
 
             subprocess.run(['echo', '::group::Create New Branch'])
 
-            subprocess.run(
-                ['git', 'remote', 'set-url', 'origin', base]
-            )
             subprocess.run(
                 ['git', 'checkout', self.base_branch]
             )
@@ -79,11 +74,7 @@ class GitHubActionUpgrade:
             subprocess.run(['git', 'add', '.'])
             subprocess.run(['git', 'commit', '-m', 'Upgrade GitHub Action'])
 
-
-            _print_message('warning', base)
-            _print_message('warning', self.actor)
-
-            subprocess.run(['git', 'push', '-u', base, new_branch])
+            subprocess.run(['git', 'push', '-u', new_branch])
 
             subprocess.run(['echo', '::endgroup::'])
 
@@ -214,7 +205,6 @@ if __name__ == '__main__':
     # https://docs.github.com/en/actions/configuring-and-managing-workflows/using-environment-variables
     repository = os.environ['GITHUB_REPOSITORY']
     base_branch = os.environ['GITHUB_REF']
-    actor = os.environ['GITHUB_ACTOR']
     # Token provided from the workflow
     token = os.environ.get('INPUT_TOKEN')
     # Committer username and email address
@@ -234,9 +224,8 @@ if __name__ == '__main__':
 
     # Initialize the Changelog CI
     action_upgrade = GitHubActionUpgrade(
-        repository, base_branch, token, username
+        repository, base_branch, token
     )
     action_upgrade.run()
 
     subprocess.run(['echo', '::endgroup::'])
-
