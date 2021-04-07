@@ -64,7 +64,7 @@ class GitHubActionUpgrade:
         if self.workflow_updated:
             new_branch = f'gh-action-upgrade-{int(time.time())}'
 
-            subprocess.run(['echo', '::group::Create New Branch'])
+            _print_message('Create New Branch', type='group')
 
             subprocess.run(
                 ['git', 'checkout', self.base_branch]
@@ -73,27 +73,27 @@ class GitHubActionUpgrade:
                 ['git', 'checkout', '-b', new_branch]
             )
             subprocess.run(['git', 'add', '.'])
-            subprocess.run(['git', 'commit', '-m', 'Upgrade GitHub Action Workflow Versions'])
+            subprocess.run(['git', 'commit', '-m', 'Upgrade GitHub Action Versions'])
 
             subprocess.run(['git', 'push', '-u', 'origin', new_branch])
 
-            subprocess.run(['echo', '::endgroup::'])
+            _print_message('', type='endgroup')
 
             current_branch = subprocess.check_output(['git', 'branch'])
 
             if new_branch in str(current_branch):
-                subprocess.run(['echo', '::group::Create Pull Request'])
+                _print_message('Create Pull Request', type='group')
 
                 self.create_pull_request(new_branch, comment)
 
-                subprocess.run(['echo', '::endgroup::'])
+                _print_message('', type='endgroup')
 
 
     def create_pull_request(self, branch_name, body):
         """Create pull request on GitHub"""
         url = f'{self.github_api_url}/repos/{self.repository}/pulls'
         payload = {
-            'title': 'Upgrade GitHub Action Workflow Versions',
+            'title': 'Upgrade GitHub Action Versions',
             'head': branch_name,
             'base': self.base_branch,
             'body': body,
@@ -199,8 +199,12 @@ class GitHubActionUpgrade:
 
 def _print_message(message, type=None):
     """Helper function to print colorful outputs in GitHub Actions shell"""
+    # docs: https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions
     if not type:
         return subprocess.run(['echo', f'{message}'])
+
+    if type == 'endgroup':
+        return subprocess.run(['echo', '::endgroup::'])
 
     return subprocess.run(['echo', f'::{type}::{message}'])
 
@@ -217,15 +221,15 @@ if __name__ == '__main__':
     email = os.environ['INPUT_COMMITTER_EMAIL']
 
     # Group: Configure Git
-    subprocess.run(['echo', '::group::Configure Git'])
+    _print_message('Configure Git', type='group')
 
     subprocess.run(['git', 'config', 'user.name', username])
     subprocess.run(['git', 'config', 'user.email', email])
 
-    subprocess.run(['echo', '::endgroup::'])
+    _print_message('', type='endgroup')
 
     # Group: Generate Changelog
-    subprocess.run(['echo', '::group::Upgrade GitHub Actions'])
+    _print_message('Upgrade GitHub Actions', type='group')
 
     # Initialize the Changelog CI
     action_upgrade = GitHubActionUpgrade(
@@ -233,4 +237,4 @@ if __name__ == '__main__':
     )
     action_upgrade.run()
 
-    subprocess.run(['echo', '::endgroup::'])
+    _print_message('', type='endgroup')
