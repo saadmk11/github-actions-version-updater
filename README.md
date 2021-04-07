@@ -1,17 +1,15 @@
-# GitHub Action Version Updater
+## GitHub Action Version Updater
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/saadmk11/github-action-upgrade?style=flat-square)](https://github.com/saadmk11/github-action-upgrade/releases/latest)
 [![GitHub](https://img.shields.io/github/license/saadmk11/github-action-upgrade?style=flat-square)](https://github.com/saadmk11/github-action-upgrade/blob/main/LICENSE)
 [![GitHub Marketplace](https://img.shields.io/badge/Get%20It-on%20Marketplace-orange?style=flat-square)](https://github.com/marketplace/actions/github-action-upgrade)
 [![GitHub stars](https://img.shields.io/github/stars/saadmk11/github-action-upgrade?color=success&style=flat-square)](https://github.com/saadmk11/github-action-upgrade/stargazers)
 
-## What is GitHub Action Version Updater?
-
 **GitHub Action Version Updater** is GitHub Action that is used to **update other GitHub Actions** in a Repository
 and create a **pull request** with the updates. It is an automated dependency updater similar to GitHub's **Dependabot**, 
 but for GitHub Actions.
 
-## How Does It Work:
+### How Does It Work:
 
 * GitHub Action Version Updater first goes through all the **workflows**
   in a repository and **checks for updates** for each of the action used in those workflows.
@@ -23,7 +21,7 @@ but for GitHub Actions.
 
 * Then a pull request is created with that branch
 
-## Usage:
+### Usage:
 
 We recommend running this action on a [`schedule`](https://docs.github.com/en/actions/reference/events-that-trigger-workflows#schedule) 
 event or a [`workflow_dispatch`](https://docs.github.com/en/actions/reference/events-that-trigger-workflows#workflow_dispatch) event.
@@ -74,6 +72,6 @@ with **repo** and **workflow** scope and pass it to the action.
 
 To know more about how to pass a secret to GitHub actions you can [Read The Docs](https://docs.github.com/en/actions/reference/encrypted-secrets)
 
-# License
+### License
 
 The code in this project is released under the [MIT License](LICENSE).
