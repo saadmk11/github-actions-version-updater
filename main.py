@@ -33,7 +33,7 @@ class GitHubActionUpgrade:
         for workflow_path in workflow_paths:
             try:
                 with open(workflow_path, 'r+') as file:
-                    print_message(f'Checking "{workflow_path}" for updates....')
+                    print_message(f'Checking "{workflow_path}" for updates', message_type='group')
 
                     file_data = file.read()
                     updated_config = file_data
@@ -63,13 +63,13 @@ class GitHubActionUpgrade:
 
                         if action != updated_action:
                             print_message(
-                                f'Found new version for "{action_repository}" on "{workflow_path}".'
+                                f'Found new version for "{action_repository}"'
                             )
                             comment += self.generate_comment_line(
                                 action_repository, latest_release
                             )
                             print_message(
-                                f'Updating "{action}" with "{updated_action}" on "{workflow_path}".'
+                                f'Updating "{action}" with "{updated_action}"'
                             )
                             updated_config = updated_config.replace(
                                 action, updated_action
@@ -78,6 +78,13 @@ class GitHubActionUpgrade:
                             file.write(updated_config)
                             file.truncate()
                             self.workflow_updated = True
+                        else:
+                            print_message(
+                                f'No updates found for "{action_repository}"'
+                            )
+
+                    print_message('', message_type='endgroup')
+
             except Exception:
                 print_message(f'Skipping "{workflow_path}"')
                 pass
