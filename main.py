@@ -72,9 +72,9 @@ class GitHubActionUpgrade:
                 ['git', 'checkout', '-b', new_branch]
             )
             subprocess.run(['git', 'add', '.'])
-            subprocess.run(['git', 'commit', '-m', 'Upgrade GitHub Action'])
+            subprocess.run(['git', 'commit', '-m', 'Upgrade GitHub Action Workflow Versions'])
 
-            subprocess.run(['git', 'push', '-u', new_branch])
+            subprocess.run(['git', 'push', '-u', 'origin', new_branch])
 
             subprocess.run(['echo', '::endgroup::'])
 
