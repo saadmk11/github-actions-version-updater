@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import time
@@ -12,11 +13,37 @@ class GitHubActionUpgrade:
     github_url = 'https://github.com/'
     action_label = 'uses'
 
-    def __init__(self, repository, base_branch, token):
+    def __init__(self, repository, base_branch, token, ignore_actions=None):
         self.repository = repository
         self.base_branch = base_branch
         self.token = token
+        self.ignore_actions = self.get_ignored_actions(ignore_actions)
         self.workflow_updated = False
+
+    @staticmethod
+    def get_ignored_actions(json_string):
+        try:
+            ignore = json.loads(json_string)
+
+            if (
+                isinstance(ignore, list) and
+                all(isinstance(item, str) for item in ignore)
+            ):
+                return set(ignore)
+            else:
+                print_message(
+                    'Input "ignore" must be a JSON array of strings',
+                    message_type='error'
+                )
+        except Exception:
+            print_message(
+                (
+                    'Invalid input format for "ignore", '
+                    'expected JSON array of strings'
+                ),
+                message_type='error'
+            )
+        return set()
 
     def run(self):
         """Entrypoint to the GitHub Action"""
@@ -30,6 +57,9 @@ class GitHubActionUpgrade:
             )
             return
 
+        if self.ignore_actions:
+            print_message(f'Actions "{self.ignore_actions}" will be skipped')
+
         for workflow_path in workflow_paths:
             try:
                 with open(workflow_path, 'r+') as file:
@@ -40,6 +70,7 @@ class GitHubActionUpgrade:
 
                     data = yaml.load(file_data, Loader=yaml.FullLoader)
                     old_action_set = set(self.get_all_actions(data))
+                    old_action_set.difference_update(self.ignore_actions)
 
                     for action in old_action_set:
                         try:
@@ -253,6 +284,8 @@ if __name__ == '__main__':
     # Committer username and email address
     username = os.environ['INPUT_COMMITTER_USERNAME']
     email = os.environ['INPUT_COMMITTER_EMAIL']
+    # Actions that should not be updated
+    ignore = os.environ['INPUT_IGNORE']
 
     # Group: Configure Git
     print_message('Configure Git', message_type='group')
@@ -267,7 +300,7 @@ if __name__ == '__main__':
 
     # Initialize GitHubActionUpgrade
     action_upgrade = GitHubActionUpgrade(
-        repository, base_branch, token
+        repository, base_branch, token, ignore_actions=ignore
     )
     action_upgrade.run()
 
