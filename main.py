@@ -23,14 +23,14 @@ class GitHubActionUpgrade:
 
         if not workflows:
             _print_message(
-                'warning', f'No Work flow found in {self.repository}.'
+                f'No Work flow found in "{self.repository}". Skipping GitHub Actions upgrade',
+                type='warning'
             )
             return
 
         for workflow_path in workflows:
-            _print_message(
-                'debug', f'Checking "{workflow_path}" for updates....'
-            )
+            _print_message(f'Checking "{workflow_path}" for updates....')
+
             with open(workflow_path, 'r+') as file:
                 file_data = file.read()
                 data = yaml.load(file_data, Loader=yaml.FullLoader)
@@ -48,7 +48,6 @@ class GitHubActionUpgrade:
 
                     if action != updated_action:
                         _print_message(
-                            'debug',
                             f'Found new version for "{action_repository}" on "{workflow_path}".'
                         )
                         comment += self.generate_comment_line(
@@ -83,7 +82,11 @@ class GitHubActionUpgrade:
             current_branch = subprocess.check_output(['git', 'branch'])
 
             if new_branch in str(current_branch):
+                subprocess.run(['echo', '::group::Create Pull Request'])
+
                 self.create_pull_request(new_branch, comment)
+
+                subprocess.run(['echo', '::endgroup::'])
 
 
     def create_pull_request(self, branch_name, body):
@@ -105,12 +108,9 @@ class GitHubActionUpgrade:
                 f'Could not create a pull request on '
                 f'{self.repository}, status code: {response.status_code}'
             )
-            _print_message('error', msg)
+            _print_message(msg, type='warning')
         else:
-            _print_message(
-                'debug',
-                f'Creating pull request on {self.repository}.'
-            )
+            _print_message(f'Creating pull request on {self.repository}.')
 
     def generate_comment_line(selfself, action_repository, latest_release):
         """Generate Comment line for pull request body"""
@@ -156,7 +156,7 @@ class GitHubActionUpgrade:
                 f'Could not find any release for '
                 f'{action_repository}, status code: {response.status_code}'
             )
-            _print_message('error', msg)
+            _print_message(msg, type='warning')
 
         return data
 
@@ -177,7 +177,7 @@ class GitHubActionUpgrade:
                 f'An error occurred while getting workflows for'
                 f'{self.repository}, status code: {response.status_code}'
             )
-            _print_message('error', msg)
+            _print_message(msg, type='error')
 
         return data
 
@@ -197,8 +197,11 @@ class GitHubActionUpgrade:
                     yield item
 
 
-def _print_message(type, message):
+def _print_message(message, type=None):
     """Helper function to print colorful outputs in GitHub Actions shell"""
+    if not type:
+        return subprocess.run(['echo', f'{message}'])
+
     return subprocess.run(['echo', f'::{type}::{message}'])
 
 
