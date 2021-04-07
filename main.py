@@ -9,6 +9,7 @@ import yaml
 class GitHubActionUpgrade:
 
     github_api_url = 'https://api.github.com'
+    github_url = 'https://github.com/'
     action_label = 'uses'
 
     def __init__(self, repository, base_branch, token):
@@ -18,53 +19,74 @@ class GitHubActionUpgrade:
         self.workflow_updated = False
 
     def run(self):
-        workflows = self.get_workflows()
-        comment = '#### GitHub Actions Version Upgrades\n'
+        """Entrypoint to the GitHub Action"""
+        workflow_paths = self.get_workflow_paths()
+        comment = ''
 
-        if not workflows:
-            _print_message(
+        if not workflow_paths:
+            print_message(
                 f'No Work flow found in "{self.repository}". Skipping GitHub Actions upgrade',
-                type='warning'
+                message_type='warning'
             )
             return
 
-        for workflow_path in workflows:
-            _print_message(f'Checking "{workflow_path}" for updates....')
+        for workflow_path in workflow_paths:
+            try:
+                with open(workflow_path, 'r+') as file:
+                    print_message(f'Checking "{workflow_path}" for updates....')
 
-            with open(workflow_path, 'r+') as file:
-                file_data = file.read()
-                data = yaml.load(file_data, Loader=yaml.FullLoader)
-                old_action_set = set(self.get_all_actions(data))
-                updated_config = file_data
+                    file_data = file.read()
+                    updated_config = file_data
 
-                for action in old_action_set:
-                    action_repository, version = action.split('@')
-                    latest_release = self.get_latest_release(action_repository)
+                    data = yaml.load(file_data, Loader=yaml.FullLoader)
+                    old_action_set = set(self.get_all_actions(data))
 
-                    if not latest_release:
-                        continue
+                    for action in old_action_set:
+                        try:
+                            action_repository, version = action.split('@')
+                        except Exception:
+                            print_message(
+                                (
+                                    f'Action "{action}" seems to be in a wrong format, '
+                                    'We currently support only community actions'
+                                ),
+                                message_type='warning'
+                            )
+                            continue
 
-                    updated_action = f'{action_repository}@{latest_release["tag_name"]}'
+                        latest_release = self.get_latest_release(action_repository)
 
-                    if action != updated_action:
-                        _print_message(
-                            f'Found new version for "{action_repository}" on "{workflow_path}".'
-                        )
-                        comment += self.generate_comment_line(
-                            action_repository, latest_release
-                        )
-                        updated_config = updated_config.replace(
-                            action, updated_action
-                        )
-                        file.seek(0)
-                        file.write(updated_config)
-                        file.truncate()
-                        self.workflow_updated = True
+                        if not latest_release:
+                            continue
+
+                        updated_action = f'{action_repository}@{latest_release["tag_name"]}'
+
+                        if action != updated_action:
+                            print_message(
+                                f'Found new version for "{action_repository}" on "{workflow_path}".'
+                            )
+                            comment += self.generate_comment_line(
+                                action_repository, latest_release
+                            )
+                            print_message(
+                                f'Updating "{action}" with "{updated_action}" on "{workflow_path}".'
+                            )
+                            updated_config = updated_config.replace(
+                                action, updated_action
+                            )
+                            file.seek(0)
+                            file.write(updated_config)
+                            file.truncate()
+                            self.workflow_updated = True
+            except Exception:
+                print_message(f'Skipping "{workflow_path}"')
+                pass
 
         if self.workflow_updated:
+            # Use timestamp to ensure uniqueness of the new branch
             new_branch = f'gh-action-upgrade-{int(time.time())}'
 
-            _print_message('Create New Branch', type='group')
+            print_message('Create New Branch', message_type='group')
 
             subprocess.run(
                 ['git', 'checkout', self.base_branch]
@@ -73,21 +95,24 @@ class GitHubActionUpgrade:
                 ['git', 'checkout', '-b', new_branch]
             )
             subprocess.run(['git', 'add', '.'])
-            subprocess.run(['git', 'commit', '-m', 'Upgrade GitHub Action Versions'])
+            subprocess.run(
+                ['git', 'commit', '-m', 'Upgrade GitHub Action Versions']
+            )
 
             subprocess.run(['git', 'push', '-u', 'origin', new_branch])
 
-            _print_message('', type='endgroup')
+            print_message('', message_type='endgroup')
 
-            current_branch = subprocess.check_output(['git', 'branch'])
+            current_branch = subprocess.check_output(
+                ['git', 'branch', '--show-current']
+            )
 
             if new_branch in str(current_branch):
-                _print_message('Create Pull Request', type='group')
+                print_message('Create Pull Request', message_type='group')
 
                 self.create_pull_request(new_branch, comment)
 
-                _print_message('', type='endgroup')
-
+                print_message('', message_type='endgroup')
 
     def create_pull_request(self, branch_name, body):
         """Create pull request on GitHub"""
@@ -96,26 +121,27 @@ class GitHubActionUpgrade:
             'title': 'Upgrade GitHub Action Versions',
             'head': branch_name,
             'base': self.base_branch,
-            'body': body,
+            'body': '### GitHub Actions Version Upgrades\n' + body,
         }
 
         response = requests.post(
             url, json=payload, headers=self.get_request_headers()
         )
 
-        if response.status_code != 201:
+        if response.status_code == 201:
+            html_url = response.json()['html_url']
+            print_message(f'Creating pull request at {html_url}.')
+        else:
             msg = (
                 f'Could not create a pull request on '
                 f'{self.repository}, status code: {response.status_code}'
             )
-            _print_message(msg, type='warning')
-        else:
-            _print_message(f'Creating pull request on {self.repository}.')
+            print_message(msg, message_type='warning')
 
-    def generate_comment_line(selfself, action_repository, latest_release):
+    def generate_comment_line(self, action_repository, latest_release):
         """Generate Comment line for pull request body"""
         return (
-            f"* **{action_repository}** published a new release "
+            f"* **[{action_repository}]({self.github_url + action_repository})** published a new release "
             f"[{latest_release['tag_name']}]({latest_release['html_url']}) "
             f"on {latest_release['published_at']}\n"
         )
@@ -156,11 +182,11 @@ class GitHubActionUpgrade:
                 f'Could not find any release for '
                 f'{action_repository}, status code: {response.status_code}'
             )
-            _print_message(msg, type='warning')
+            print_message(msg, message_type='warning')
 
         return data
 
-    def get_workflows(self):
+    def get_workflow_paths(self):
         """Get all workflows of the repository using GitHub API """
         url = f'{self.github_api_url}/repos/{self.repository}/actions/workflows'
 
@@ -177,17 +203,17 @@ class GitHubActionUpgrade:
                 f'An error occurred while getting workflows for'
                 f'{self.repository}, status code: {response.status_code}'
             )
-            _print_message(msg, type='error')
+            print_message(msg, message_type='error')
 
         return data
 
     def get_all_actions(self, config):
-        """Get all action names from config recursively"""
+        """Recursively get all action names from config"""
         if isinstance(config, dict):
             for key, value in config.items():
                 if key == self.action_label:
                     yield value
-                elif (isinstance(value, dict) or isinstance(value, list)):
+                elif isinstance(value, dict) or isinstance(value, list):
                     for item in self.get_all_actions(value):
                         yield item
 
@@ -197,13 +223,13 @@ class GitHubActionUpgrade:
                     yield item
 
 
-def _print_message(message, type=None):
+def print_message(message, message_type=None):
     """Helper function to print colorful outputs in GitHub Actions shell"""
     # docs: https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions
-    if not type:
+    if not message_type:
         return subprocess.run(['echo', f'{message}'])
 
-    if type == 'endgroup':
+    if message_type == 'endgroup':
         return subprocess.run(['echo', '::endgroup::'])
 
     return subprocess.run(['echo', f'::{type}::{message}'])
@@ -221,15 +247,15 @@ if __name__ == '__main__':
     email = os.environ['INPUT_COMMITTER_EMAIL']
 
     # Group: Configure Git
-    _print_message('Configure Git', type='group')
+    print_message('Configure Git', message_type='group')
 
     subprocess.run(['git', 'config', 'user.name', username])
     subprocess.run(['git', 'config', 'user.email', email])
 
-    _print_message('', type='endgroup')
+    print_message('', message_type='endgroup')
 
     # Group: Generate Changelog
-    _print_message('Upgrade GitHub Actions', type='group')
+    print_message('Upgrade GitHub Actions', message_type='group')
 
     # Initialize the Changelog CI
     action_upgrade = GitHubActionUpgrade(
@@ -237,4 +263,4 @@ if __name__ == '__main__':
     )
     action_upgrade.run()
 
-    _print_message('', type='endgroup')
+    print_message('', message_type='endgroup')
