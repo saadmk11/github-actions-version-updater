@@ -26,7 +26,7 @@ class GitHubActionUpgrade:
             ignore = json.loads(json_string)
 
             if (
-                isinstance(ignore, str) and
+                isinstance(ignore, list) and
                 all(isinstance(item, str) for item in ignore)
             ):
                 return set(ignore)
