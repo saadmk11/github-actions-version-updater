@@ -54,6 +54,9 @@ class GitHubActionUpgrade:
             )
             return
 
+        if self.ignore_actions:
+            print_message(f'Actions "{self.ignore_actions}" will be skipped')
+
         for workflow_path in workflow_paths:
             try:
                 with open(workflow_path, 'r+') as file:
