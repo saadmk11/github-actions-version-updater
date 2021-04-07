@@ -72,6 +72,11 @@ with **repo** and **workflow** scope and pass it to the action.
 
 To know more about how to pass a secret to GitHub actions you can [Read The Docs](https://docs.github.com/en/actions/reference/encrypted-secrets)
 
+### Demo
+
+![GitHub Action Updater](https://user-images.githubusercontent.com/24854406/113888349-15dbdc00-97e4-11eb-91a6-622828455d1f.gif)
+
+
 ### License
 
 The code in this project is released under the [MIT License](LICENSE).
