@@ -4,6 +4,7 @@
 [![GitHub](https://img.shields.io/github/license/saadmk11/github-action-upgrade?style=flat-square)](https://github.com/saadmk11/github-action-upgrade/blob/main/LICENSE)
 [![GitHub Marketplace](https://img.shields.io/badge/Get%20It-on%20Marketplace-orange?style=flat-square)](https://github.com/marketplace/actions/github-action-upgrade)
 [![GitHub stars](https://img.shields.io/github/stars/saadmk11/github-action-upgrade?color=success&style=flat-square)](https://github.com/saadmk11/github-action-upgrade/stargazers)
+![GitHub Workflow Status](https://img.shields.io/github/workflow/status/saadmk11/github-action-upgrade/Changelog%20CI?label=Changelog%20CI&style=flat-square)
 
 **GitHub Action Version Updater** is GitHub Action that is used to **update other GitHub Actions** in a Repository
 and create a **pull request** with the updates. It is an automated dependency updater similar to GitHub's **Dependabot**, 
