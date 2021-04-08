@@ -7,7 +7,7 @@ import requests
 import yaml
 
 
-class GitHubActionUpgrade:
+class GitHubActionsVersionUpdater:
     """Main class that checks for updates and creates pull request"""
 
     github_api_url = 'https://api.github.com'
@@ -54,7 +54,7 @@ class GitHubActionUpgrade:
 
         if not workflow_paths:
             print_message(
-                f'No Work flow found in "{self.repository}". Skipping GitHub Actions upgrade',
+                f'No Workflow found in "{self.repository}". Skipping GitHub Actions Version Update',
                 message_type='warning'
             )
             return
@@ -124,7 +124,7 @@ class GitHubActionUpgrade:
 
         if self.workflow_updated:
             # Use timestamp to ensure uniqueness of the new branch
-            new_branch = f'gh-action-upgrade-{int(time.time())}'
+            new_branch = f'gh-actions-update-{int(time.time())}'
 
             print_message('Create New Branch', message_type='group')
 
@@ -136,7 +136,7 @@ class GitHubActionUpgrade:
             )
             subprocess.run(['git', 'add', '.'])
             subprocess.run(
-                ['git', 'commit', '-m', 'Upgrade GitHub Action Versions']
+                ['git', 'commit', '-m', 'Update GitHub Action Versions']
             )
 
             subprocess.run(['git', 'push', '-u', 'origin', new_branch])
@@ -158,10 +158,10 @@ class GitHubActionUpgrade:
         """Create pull request on GitHub"""
         url = f'{self.github_api_url}/repos/{self.repository}/pulls'
         payload = {
-            'title': 'Upgrade GitHub Action Versions',
+            'title': 'Update GitHub Action Versions',
             'head': branch_name,
             'base': self.base_branch,
-            'body': '### GitHub Actions Version Upgrades\n' + body,
+            'body': '### GitHub Actions Version Updates\n' + body,
         }
 
         response = requests.post(
@@ -297,13 +297,13 @@ if __name__ == '__main__':
 
     print_message('', message_type='endgroup')
 
-    # Group: Run Upgrade GitHub Actions
-    print_message('Upgrade GitHub Actions', message_type='group')
+    # Group: Run Update GitHub Actions
+    print_message('Update GitHub Actions', message_type='group')
 
-    # Initialize GitHubActionUpgrade
-    action_upgrade = GitHubActionUpgrade(
+    # Initialize GitHubActionsVersionUpdater
+    updater = GitHubActionsVersionUpdater(
         repository, base_branch, token, ignore_actions=ignore
     )
-    action_upgrade.run()
+    updater.run()
 
     print_message('', message_type='endgroup')
