@@ -2,7 +2,7 @@
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/saadmk11/github-actions-version-updater?style=flat-square)](https://github.com/saadmk11/github-actions-version-updater/releases/latest)
 [![GitHub](https://img.shields.io/github/license/saadmk11/github-actions-version-updater?style=flat-square)](https://github.com/saadmk11/github-actions-version-updater/blob/main/LICENSE)
-[![GitHub Marketplace](https://img.shields.io/badge/Get%20It-on%20Marketplace-orange?style=flat-square)](https://github.com/marketplace/actions/github-action-updater)
+[![GitHub Marketplace](https://img.shields.io/badge/Get%20It-on%20Marketplace-orange?style=flat-square)](https://github.com/marketplace/actions/github-actions-version-updater)
 [![GitHub stars](https://img.shields.io/github/stars/saadmk11/github-actions-version-updater?color=success&style=flat-square)](https://github.com/saadmk11/github-actions-version-updater/stargazers)
 ![GitHub Workflow Status](https://img.shields.io/github/workflow/status/saadmk11/github-actions-version-updater/Changelog%20CI?label=Changelog%20CI&style=flat-square)
 
