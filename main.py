@@ -301,9 +301,9 @@ if __name__ == '__main__':
     print_message('Update GitHub Actions', message_type='group')
 
     # Initialize GitHubActionsVersionUpdater
-    updater = GitHubActionsVersionUpdater(
+    actions_version_updater = GitHubActionsVersionUpdater(
         repository, base_branch, token, ignore_actions=ignore
     )
-    updater.run()
+    actions_version_updater.run()
 
     print_message('', message_type='endgroup')
