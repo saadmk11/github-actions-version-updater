@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import time
+from functools import cached_property
 
 import requests
 import yaml
@@ -47,14 +48,32 @@ class GitHubActionsVersionUpdater:
             )
         return set()
 
+    @cached_property
+    def get_request_headers(self):
+        """Get headers for GitHub API request"""
+        headers = {
+            'Accept': 'application/vnd.github.v3+json'
+        }
+        # if the user adds `token` add it to API Request
+        # required for `private` repositories and creating pull requests
+        if self.token:
+            headers.update({
+                'authorization': 'Bearer {token}'.format(token=self.token)
+            })
+
+        return headers
+
     def run(self):
         """Entrypoint to the GitHub Action"""
         workflow_paths = self.get_workflow_paths()
-        pull_request_body = set()
+        pull_request_body = {'### GitHub Actions Version Updates\n'}
 
         if not workflow_paths:
             print_message(
-                f'No Workflow found in "{self.repository}". Skipping GitHub Actions Version Update',
+                (
+                    f'No Workflow found in "{self.repository}". '
+                    f'Skipping GitHub Actions Version Update'
+                ),
                 message_type='warning'
             )
             return
@@ -65,7 +84,10 @@ class GitHubActionsVersionUpdater:
         for workflow_path in workflow_paths:
             try:
                 with open(workflow_path, 'r+') as file:
-                    print_message(f'Checking "{workflow_path}" for updates', message_type='group')
+                    print_message(
+                        f'Checking "{workflow_path}" for updates',
+                        message_type='group'
+                    )
 
                     file_data = file.read()
                     updated_config = file_data
@@ -93,7 +115,9 @@ class GitHubActionsVersionUpdater:
                         if not latest_release:
                             continue
 
-                        updated_action = f'{action_repository}@{latest_release["tag_name"]}'
+                        updated_action = (
+                            f'{action_repository}@{latest_release["tag_name"]}'
+                        )
 
                         if action != updated_action:
                             print_message(
@@ -125,25 +149,7 @@ class GitHubActionsVersionUpdater:
                 print_message(f'Skipping "{workflow_path}"')
 
         if self.workflow_updated:
-            # Use timestamp to ensure uniqueness of the new branch
-            new_branch = f'gh-actions-update-{int(time.time())}'
-
-            print_message('Create New Branch', message_type='group')
-
-            subprocess.run(
-                ['git', 'checkout', self.base_branch]
-            )
-            subprocess.run(
-                ['git', 'checkout', '-b', new_branch]
-            )
-            subprocess.run(['git', 'add', '.'])
-            subprocess.run(
-                ['git', 'commit', '-m', 'Update GitHub Action Versions']
-            )
-
-            subprocess.run(['git', 'push', '-u', 'origin', new_branch])
-
-            print_message('', message_type='endgroup')
+            new_branch = self.create_new_branch()
 
             current_branch = subprocess.check_output(
                 ['git', 'rev-parse', '--abbrev-ref', 'HEAD']
@@ -152,25 +158,47 @@ class GitHubActionsVersionUpdater:
             if new_branch in str(current_branch):
                 print_message('Create Pull Request', message_type='group')
 
-                self.create_pull_request(new_branch, pull_request_body)
+                pull_request_body_str = ''.join(pull_request_body)
+                self.create_pull_request(new_branch, pull_request_body_str)
 
                 print_message('', message_type='endgroup')
 
+    def create_new_branch(self):
+        """Create and push a new branch with the changes"""
+        print_message('Create New Branch', message_type='group')
+
+        # Use timestamp to ensure uniqueness of the new branch
+        new_branch = f'gh-actions-update-{int(time.time())}'
+
+        subprocess.run(
+            ['git', 'checkout', self.base_branch]
+        )
+        subprocess.run(
+            ['git', 'checkout', '-b', new_branch]
+        )
+        subprocess.run(['git', 'add', '.'])
+        subprocess.run(
+            ['git', 'commit', '-m', 'Update GitHub Action Versions']
+        )
+
+        subprocess.run(['git', 'push', '-u', 'origin', new_branch])
+
+        print_message('', message_type='endgroup')
+
+        return new_branch
+
     def create_pull_request(self, branch_name, body):
         """Create pull request on GitHub"""
-        pull_request_body = (
-            '### GitHub Actions Version Updates\n' + ''.join(body)
-        )
         url = f'{self.github_api_url}/repos/{self.repository}/pulls'
         payload = {
             'title': 'Update GitHub Action Versions',
             'head': branch_name,
             'base': self.base_branch,
-            'body': pull_request_body,
+            'body': body,
         }
 
         response = requests.post(
-            url, json=payload, headers=self.get_request_headers()
+            url, json=payload, headers=self.get_request_headers
         )
 
         if response.status_code == 201:
@@ -192,25 +220,11 @@ class GitHubActionsVersionUpdater:
             f"on {latest_release['published_at']}\n"
         )
 
-    def get_request_headers(self):
-        """Get headers for GitHub API request"""
-        headers = {
-            'Accept': 'application/vnd.github.v3+json'
-        }
-        # if the user adds `GITHUB_TOKEN` add it to API Request
-        # required for `private` repositories
-        if self.token:
-            headers.update({
-                'authorization': 'Bearer {token}'.format(token=self.token)
-            })
-
-        return headers
-
     def get_latest_release(self, action_repository):
         """Get latest release using GitHub API """
         url = f'{self.github_api_url}/repos/{action_repository}/releases/latest'
 
-        response = requests.get(url, headers=self.get_request_headers())
+        response = requests.get(url, headers=self.get_request_headers)
         data = {}
 
         if response.status_code == 200:
@@ -236,7 +250,7 @@ class GitHubActionsVersionUpdater:
         """Get all workflows of the repository using GitHub API """
         url = f'{self.github_api_url}/repos/{self.repository}/actions/workflows'
 
-        response = requests.get(url, headers=self.get_request_headers())
+        response = requests.get(url, headers=self.get_request_headers)
         data = []
 
         if response.status_code == 200:
