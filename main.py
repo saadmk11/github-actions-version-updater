@@ -50,7 +50,7 @@ class GitHubActionsVersionUpdater:
     def run(self):
         """Entrypoint to the GitHub Action"""
         workflow_paths = self.get_workflow_paths()
-        comment = ''
+        pull_request_body = set()
 
         if not workflow_paths:
             print_message(
@@ -99,8 +99,10 @@ class GitHubActionsVersionUpdater:
                             print_message(
                                 f'Found new version for "{action_repository}"'
                             )
-                            comment += self.generate_comment_line(
-                                action_repository, latest_release
+                            pull_request_body.add(
+                                self.generate_pull_request_body_line(
+                                    action_repository, latest_release
+                                )
                             )
                             print_message(
                                 f'Updating "{action}" with "{updated_action}"'
@@ -150,18 +152,21 @@ class GitHubActionsVersionUpdater:
             if new_branch in str(current_branch):
                 print_message('Create Pull Request', message_type='group')
 
-                self.create_pull_request(new_branch, comment)
+                self.create_pull_request(new_branch, pull_request_body)
 
                 print_message('', message_type='endgroup')
 
     def create_pull_request(self, branch_name, body):
         """Create pull request on GitHub"""
+        pull_request_body = (
+            '### GitHub Actions Version Updates\n' + ''.join(body)
+        )
         url = f'{self.github_api_url}/repos/{self.repository}/pulls'
         payload = {
             'title': 'Update GitHub Action Versions',
             'head': branch_name,
             'base': self.base_branch,
-            'body': '### GitHub Actions Version Updates\n' + body,
+            'body': pull_request_body,
         }
 
         response = requests.post(
@@ -178,8 +183,8 @@ class GitHubActionsVersionUpdater:
             )
             print_message(msg, message_type='warning')
 
-    def generate_comment_line(self, action_repository, latest_release):
-        """Generate Comment line for pull request body"""
+    def generate_pull_request_body_line(self, action_repository, latest_release):
+        """Generate pull request body line for pull request body"""
         return (
             f"* **[{action_repository}]({self.github_url + action_repository})** "
             "published a new release "
