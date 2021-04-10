@@ -85,7 +85,7 @@ class GitHubActionsVersionUpdater:
             try:
                 with open(workflow_path, 'r+') as file:
                     print_message(
-                        f'Checking "{workflow_path}" for updates',
+                        f'Checking "{workflow_path}" for updates \U1F389 \U1F389',
                         message_type='group'
                     )
 
@@ -165,6 +165,8 @@ class GitHubActionsVersionUpdater:
                 self.create_pull_request(new_branch, pull_request_body_str)
 
                 print_message('', message_type='endgroup')
+        else:
+            print_message('Everything is up-to-date \U1F389 \U1F389')
 
     def create_new_branch(self):
         """Create and push a new branch with the changes"""
