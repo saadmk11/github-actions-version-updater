@@ -85,7 +85,7 @@ class GitHubActionsVersionUpdater:
             try:
                 with open(workflow_path, 'r+') as file:
                     print_message(
-                        f'Checking "{workflow_path}" for updates \U0001F389',
+                        f'Checking "{workflow_path}" for updates',
                         message_type='group'
                     )
 
@@ -166,7 +166,7 @@ class GitHubActionsVersionUpdater:
 
                 print_message('', message_type='endgroup')
         else:
-            print_message('Everything is up-to-date \U0001F389 \U0001F389')
+            print_message('Everything is up-to-date! \U0001F389 \U0001F389')
 
     def create_new_branch(self):
         """Create and push a new branch with the changes"""
@@ -208,7 +208,7 @@ class GitHubActionsVersionUpdater:
 
         if response.status_code == 201:
             html_url = response.json()['html_url']
-            print_message(f'Pull request opened at {html_url}')
+            print_message(f'Pull request opened at {html_url} \U0001F389')
         else:
             msg = (
                 f'Could not create a pull request on '
