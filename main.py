@@ -66,7 +66,7 @@ class GitHubActionsVersionUpdater:
     def run(self):
         """Entrypoint to the GitHub Action"""
         workflow_paths = self.get_workflow_paths()
-        pull_request_body = {'### GitHub Actions Version Updates\n'}
+        pull_request_body = set()
 
         if not workflow_paths:
             print_message(
@@ -158,7 +158,10 @@ class GitHubActionsVersionUpdater:
             if new_branch in str(current_branch):
                 print_message('Create Pull Request', message_type='group')
 
-                pull_request_body_str = ''.join(pull_request_body)
+                pull_request_body_str = (
+                    '### GitHub Actions Version Updates\n' +
+                    ''.join(pull_request_body)
+                )
                 self.create_pull_request(new_branch, pull_request_body_str)
 
                 print_message('', message_type='endgroup')
