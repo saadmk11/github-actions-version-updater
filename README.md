@@ -7,7 +7,7 @@
 ![GitHub Workflow Status](https://img.shields.io/github/workflow/status/saadmk11/github-actions-version-updater/Changelog%20CI?label=Changelog%20CI&style=flat-square)
 
 **GitHub Actions Version Updater** is GitHub Action that is used to **update other GitHub Actions** in a Repository
-and create a **pull request** with the updates. It is an automated dependency updater similar to GitHub's **Dependabot**, 
+and create a **pull request** with the updates. It is an automated dependency updater similar to GitHub's **Dependabot**,
 but for GitHub Actions.
 
 ### How Does It Work:
@@ -24,16 +24,16 @@ but for GitHub Actions.
 
 ### Usage:
 
-We recommend running this action on a [`schedule`](https://docs.github.com/en/actions/reference/events-that-trigger-workflows#schedule) 
+We recommend running this action on a [`schedule`](https://docs.github.com/en/actions/reference/events-that-trigger-workflows#schedule)
 event or a [`workflow_dispatch`](https://docs.github.com/en/actions/reference/events-that-trigger-workflows#workflow_dispatch) event.
 
-To integrate `GitHub Actions Version Updater` on your repository, create a `YAML`  file 
+To integrate `GitHub Actions Version Updater` on your repository, create a `YAML`  file
 inside `.github/workflows/` directory (`.github/workflows/updater.yaml`) add the following into the file:
 
 ```yaml
 name: GitHub Actions Version Updater
 
-# Controls when the action will run. 
+# Controls when the action will run.
 on:
   # can be used to run workflow manually
   workflow_dispatch:
@@ -44,7 +44,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-  
+
     steps:
       - uses: actions/checkout@v2
         with:
@@ -58,6 +58,10 @@ jobs:
           # defaults to `github-actions[bot]` if not provided
           committer_username: 'test'
           committer_email: 'test@test.com'
+          # Optional, allows customizing the commit message and pull request title
+          # Both default to 'Update GitHub Action Versions'
+          commit_message: 'Commit Message'
+          pull_request_title: 'Pull Request Title'
           # Access token with `workflow` scope is required
           token: ${{ secrets.WORKFLOW_SECRET }}
           # Do not update these actions (Optional)
