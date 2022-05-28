@@ -183,7 +183,7 @@ class GitHubActionsVersionUpdater:
         )
         subprocess.run(['git', 'add', '.'])
         subprocess.run(
-            ['git', 'commit', '-m', 'Update GitHub Action Versions']
+            ['git', 'commit', '-m', commit_message]
         )
 
         subprocess.run(['git', 'push', '-u', 'origin', new_branch])
@@ -196,7 +196,7 @@ class GitHubActionsVersionUpdater:
         """Create pull request on GitHub"""
         url = f'{self.github_api_url}/repos/{self.repository}/pulls'
         payload = {
-            'title': 'Update GitHub Action Versions',
+            'title': pr_title,
             'head': branch_name,
             'base': self.base_branch,
             'body': body,
@@ -312,6 +312,10 @@ if __name__ == '__main__':
     email = os.environ['INPUT_COMMITTER_EMAIL']
     # Actions that should not be updated
     ignore = os.environ['INPUT_IGNORE']
+    # Commit message
+    commit_message = os.environ['INPUT_COMMIT_MESSAGE']
+    # Pull Request Title
+    pr_title = os.environ['INPUT_PULL_REQUEST_TITLE']
 
     # Group: Configure Git
     print_message('Configure Git', message_type='group')
