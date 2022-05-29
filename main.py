@@ -15,10 +15,12 @@ class GitHubActionsVersionUpdater:
     github_url = 'https://github.com/'
     action_label = 'uses'
 
-    def __init__(self, repository, base_branch, token, ignore_actions=None):
+    def __init__(self, repository, base_branch, token, commit_message, pr_title, ignore_actions=None):
         self.repository = repository
         self.base_branch = base_branch
         self.token = token
+        self.commit_message = commit_message
+        self.pr_title = pr_title
         self.ignore_actions = self.get_ignored_actions(ignore_actions)
         self.workflow_updated = False
 
