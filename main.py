@@ -332,7 +332,7 @@ if __name__ == '__main__':
 
     # Initialize GitHubActionsVersionUpdater
     actions_version_updater = GitHubActionsVersionUpdater(
-        repository, base_branch, token, ignore_actions=ignore
+        repository, base_branch, token, commit_message, pr_title, ignore_actions=ignore
     )
     actions_version_updater.run()
 
