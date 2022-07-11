@@ -185,7 +185,7 @@ class GitHubActionsVersionUpdater:
         )
         subprocess.run(['git', 'add', '.'])
         subprocess.run(
-            ['git', 'commit', '-m', commit_message]
+            ['git', 'commit', '-m', self.commit_message]
         )
 
         subprocess.run(['git', 'push', '-u', 'origin', new_branch])
@@ -198,7 +198,7 @@ class GitHubActionsVersionUpdater:
         """Create pull request on GitHub"""
         url = f'{self.github_api_url}/repos/{self.repository}/pulls'
         payload = {
-            'title': pr_title,
+            'title': self.pr_title,
             'head': branch_name,
             'base': self.base_branch,
             'body': body,
