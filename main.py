@@ -15,10 +15,12 @@ class GitHubActionsVersionUpdater:
     github_url = 'https://github.com/'
     action_label = 'uses'
 
-    def __init__(self, repository, base_branch, token, ignore_actions=None):
+    def __init__(self, repository, base_branch, token, commit_message=None, pr_title=None, ignore_actions=None):
         self.repository = repository
         self.base_branch = base_branch
         self.token = token
+        self.commit_message = commit_message or 'Update GitHub Action Versions'
+        self.pr_title = pr_title or 'Update GitHub Action Versions'
         self.ignore_actions = self.get_ignored_actions(ignore_actions)
         self.workflow_updated = False
 
@@ -183,7 +185,7 @@ class GitHubActionsVersionUpdater:
         )
         subprocess.run(['git', 'add', '.'])
         subprocess.run(
-            ['git', 'commit', '-m', 'Update GitHub Action Versions']
+            ['git', 'commit', '-m', self.commit_message]
         )
 
         subprocess.run(['git', 'push', '-u', 'origin', new_branch])
@@ -196,7 +198,7 @@ class GitHubActionsVersionUpdater:
         """Create pull request on GitHub"""
         url = f'{self.github_api_url}/repos/{self.repository}/pulls'
         payload = {
-            'title': 'Update GitHub Action Versions',
+            'title': self.pr_title,
             'head': branch_name,
             'base': self.base_branch,
             'body': body,
@@ -312,6 +314,10 @@ if __name__ == '__main__':
     email = os.environ['INPUT_COMMITTER_EMAIL']
     # Actions that should not be updated
     ignore = os.environ['INPUT_IGNORE']
+    # Commit message
+    commit_message = os.environ['INPUT_COMMIT_MESSAGE']
+    # Pull Request Title
+    pr_title = os.environ['INPUT_PULL_REQUEST_TITLE']
 
     # Group: Configure Git
     print_message('Configure Git', message_type='group')
@@ -326,7 +332,7 @@ if __name__ == '__main__':
 
     # Initialize GitHubActionsVersionUpdater
     actions_version_updater = GitHubActionsVersionUpdater(
-        repository, base_branch, token, ignore_actions=ignore
+        repository, base_branch, token, commit_message=commit_message, pr_title=pr_title, ignore_actions=ignore
     )
     actions_version_updater.run()
 
