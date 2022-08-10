@@ -1,3 +1,4 @@
+import glob
 import json
 import os
 import subprocess
@@ -15,7 +16,7 @@ class GitHubActionsVersionUpdater:
     github_url = 'https://github.com/'
     action_label = 'uses'
 
-    def __init__(self, repository, base_branch, token, commit_message=None, pr_title=None, ignore_actions=None):
+    def __init__(self, repository, base_branch, token, paths, workspace, commit_message=None, pr_title=None, ignore_actions=None):
         self.repository = repository
         self.base_branch = base_branch
         self.token = token
@@ -23,6 +24,8 @@ class GitHubActionsVersionUpdater:
         self.pr_title = pr_title or 'Update GitHub Action Versions'
         self.ignore_actions = self.get_ignored_actions(ignore_actions)
         self.workflow_updated = False
+        self.paths = paths.split(';')
+        self.workspace = workspace
 
     @staticmethod
     def get_ignored_actions(json_string):
@@ -254,25 +257,11 @@ class GitHubActionsVersionUpdater:
         return data
 
     def get_workflow_paths(self):
-        """Get all workflows of the repository using GitHub API """
-        url = f'{self.github_api_url}/repos/{self.repository}/actions/workflows'
-
-        response = requests.get(url, headers=self.get_request_headers)
-        data = []
-
-        if response.status_code == 200:
-            response_data = response.json()
-
-            for workflow in response_data['workflows']:
-                data.append(workflow['path'])
-        else:
-            msg = (
-                f'An error occurred while getting workflows for'
-                f'{self.repository}, status code: {response.status_code}'
-            )
-            print_message(msg, message_type='error')
-
-        return data
+        """Get all workflows of the repository using paths info """
+        data = set()
+        for path in self.paths:
+            data.update(glob.glob(os.path.join(self.workspace, path)))
+        return sorted(data)
 
     def get_all_actions(self, config):
         """Recursively get all action names from config"""
@@ -306,6 +295,7 @@ if __name__ == '__main__':
     # Default environment variable from GitHub
     # https://docs.github.com/en/actions/configuring-and-managing-workflows/using-environment-variables
     repository = os.environ['GITHUB_REPOSITORY']
+    workspace = os.environ['GITHUB_WORKSPACE']
     base_branch = os.environ['GITHUB_REF']
     # Token provided from the workflow
     token = os.environ.get('INPUT_TOKEN')
@@ -318,6 +308,8 @@ if __name__ == '__main__':
     commit_message = os.environ['INPUT_COMMIT_MESSAGE']
     # Pull Request Title
     pr_title = os.environ['INPUT_PULL_REQUEST_TITLE']
+    # paths
+    paths = os.environ['INPUT_PATHS']
 
     # Group: Configure Git
     print_message('Configure Git', message_type='group')
@@ -332,7 +324,7 @@ if __name__ == '__main__':
 
     # Initialize GitHubActionsVersionUpdater
     actions_version_updater = GitHubActionsVersionUpdater(
-        repository, base_branch, token, commit_message=commit_message, pr_title=pr_title, ignore_actions=ignore
+        repository, base_branch, token, paths, workspace, commit_message=commit_message, pr_title=pr_title, ignore_actions=ignore
     )
     actions_version_updater.run()
 

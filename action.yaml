@@ -28,6 +28,10 @@ inputs:
   token:
     description: 'Personal Access token with workflow permission'
     required: true
+  paths:
+    description: 'Glob like patterns where to look for actions - ; separated'
+    required: false
+    default: '.github/workflows/*.yml;.github/workflows/*.yaml'
 runs:
   using: 'docker'
   image: 'Dockerfile'
