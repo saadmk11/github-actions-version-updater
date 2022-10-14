@@ -193,6 +193,9 @@ if __name__ == "__main__":
         user_configuration = Configuration.create(os.environ)
         action_environment = ActionEnvironment.from_env(os.environ)
 
+        gha_utils.echo("Using Configuration:")
+        gha_utils.echo(user_configuration._asdict())
+
     # Configure Git Author
     configure_git_author(
         user_configuration.git_committer_username,
