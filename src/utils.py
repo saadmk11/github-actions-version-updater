@@ -49,7 +49,9 @@ def create_pull_request(
 
 
 def display_whats_new() -> None:
-    """function that prints what's new in GitHub Actions Version Updater Latest Version"""
+    """
+    Print what's new in GitHub Actions Version Updater Latest Version
+    """
     url = "https://api.github.com/repos/saadmk11/github-actions-version-updater/releases/latest"
     response = requests.get(url)
 
@@ -59,7 +61,10 @@ def display_whats_new() -> None:
         latest_release_html_url = response_data["html_url"]
         latest_release_body = response_data["body"]
 
-        group_title = f"\U0001F389 What's New In GitHub Actions Version Updater {latest_release_tag} \U0001F389"
+        group_title = (
+            "\U0001F389 What's New In "
+            f"GitHub Actions Version Updater {latest_release_tag} \U0001F389"
+        )
 
         with gha_utils.group(group_title):
             gha_utils.echo(latest_release_body)

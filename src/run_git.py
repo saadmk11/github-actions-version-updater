@@ -32,7 +32,7 @@ def git_commit_changes(
     """
     Commit the changed files.
     """
-    with gha_utils.group(f"Commit Changes"):
+    with gha_utils.group("Commit Changes"):
         gha_utils.echo("Git Status:")
         run_subprocess_command(["git", "status"])
 
