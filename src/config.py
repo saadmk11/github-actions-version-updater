@@ -55,7 +55,7 @@ class Configuration(NamedTuple):
             "git_committer_email": env.get("INPUT_COMMITTER_EMAIL"),
             "pull_request_title": env.get("INPUT_PULL_REQUEST_TITLE"),
             "commit_message": env.get("INPUT_COMMIT_MESSAGE"),
-            "ignore_actions": env.get("INPUT_TOKEN"),
+            "ignore_actions": env.get("INPUT_IGNORE"),
         }
         return user_config
 
