@@ -33,6 +33,12 @@ def git_commit_changes(
     Commit the changed files.
     """
     with gha_utils.group(f"Commit Changes"):
+        gha_utils.echo("Git Status:")
+        run_subprocess_command(["git", "status"])
+
+        gha_utils.echo("Git Diff:")
+        run_subprocess_command(["git", "diff"])
+
         run_subprocess_command(["git", "add", "."])
         run_subprocess_command(
             ["git", "commit", f"--author={commit_author}", "-m", commit_message]
