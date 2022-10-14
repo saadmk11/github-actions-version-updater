@@ -35,11 +35,6 @@ class GitHubActionsVersionUpdater:
             )
             raise SystemExit(0)
 
-        ignore_actions = self.user_config.ignore_actions
-
-        if ignore_actions:
-            gha_utils.echo(f'Actions {", ".join(ignore_actions)} will be skipped!')
-
         for workflow_path in workflow_paths:
             try:
                 with open(workflow_path, "r+") as file, gha_utils.group(
@@ -51,7 +46,7 @@ class GitHubActionsVersionUpdater:
                     data = yaml.load(file_data, Loader=yaml.FullLoader)
                     old_action_set = set(self.get_all_actions(data))
                     # Remove ignored actions
-                    old_action_set.difference_update(ignore_actions)
+                    old_action_set.difference_update(self.user_config.ignore_actions)
 
                     for action in old_action_set:
                         try:
