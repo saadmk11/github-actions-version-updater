@@ -52,7 +52,11 @@ def display_whats_new() -> None:
     """
     Print what's new in GitHub Actions Version Updater Latest Version
     """
-    url = "https://api.github.com/repos/saadmk11/github-actions-version-updater/releases/latest"
+    url = (
+        "https://api.github.com/repos"
+        "/saadmk11/github-actions-version-updater"
+        "/releases/latest"
+    )
     response = requests.get(url)
 
     if response.status_code == 200:
