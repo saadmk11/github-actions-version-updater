@@ -1,6 +1,7 @@
 import os
 import time
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import github_action_utils as gha_utils  # type: ignore
 import requests
@@ -180,13 +181,11 @@ class GitHubActionsVersionUpdater:
                 if key == self.action_label:
                     yield value
                 elif isinstance(value, dict) or isinstance(value, list):
-                    for item in self.get_all_actions(value):
-                        yield item
+                    yield from self.get_all_actions(value)
 
         elif isinstance(data, list):
             for element in data:
-                for item in self.get_all_actions(element):
-                    yield item
+                yield from self.get_all_actions(element)
 
 
 if __name__ == "__main__":

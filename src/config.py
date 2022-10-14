@@ -1,5 +1,6 @@
 import json
-from typing import Any, Mapping, NamedTuple
+from collections.abc import Mapping
+from typing import Any, NamedTuple
 
 import github_action_utils as gha_utils  # type: ignore
 
