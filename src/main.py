@@ -38,7 +38,7 @@ class GitHubActionsVersionUpdater:
         ignore_actions = self.user_config.ignore_actions
 
         if ignore_actions:
-            gha_utils.echo(f'Actions "{ignore_actions}" will be skipped')
+            gha_utils.echo(f'Actions {", ".join(ignore_actions)} will be skipped!')
 
         for workflow_path in workflow_paths:
             try:
@@ -119,6 +119,7 @@ class GitHubActionsVersionUpdater:
                 pull_request_body_str,
                 self.user_config.github_token,
             )
+            gha_utils.append_job_summary(pull_request_body_str)
         else:
             gha_utils.notice("Everything is up-to-date! \U0001F389 \U0001F389")
 
