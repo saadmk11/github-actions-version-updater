@@ -1,4 +1,4 @@
-FROM python:3.8
+FROM python:3.10-slim-buster
 
 LABEL "com.github.actions.name"="GitHub Actions Version Updater"
 LABEL "com.github.actions.description"="GitHub Actions Version Updater updates GitHub Action versions in a repository and creates a pull request with the changes."
@@ -9,11 +9,21 @@ LABEL "repository"="https://github.com/saadmk11/github-actions-version-updater"
 LABEL "homepage"="https://github.com/saadmk11/github-actions-version-updater"
 LABEL "maintainer"="saadmk11"
 
-COPY requirements.txt /requirements.txt
+RUN apt-get update \
+    && apt-get install \
+       -y \
+       --no-install-recommends \
+       --no-install-suggests \
+       git \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN pip install -r requirements.txt
+COPY ./requirements.txt .
 
-COPY main.py /main.py
+RUN pip install --no-cache-dir -r requirements.txt
 
-RUN ["chmod", "+x", "/main.py"]
-ENTRYPOINT ["python", "/main.py"]
+COPY . ./app
+
+ENV PYTHONPATH "${PYTHONPATH}:/app"
+
+CMD ["python", "-m", "src.main"]
