@@ -39,7 +39,7 @@ def create_pull_request(
 
         if response.status_code == 201:
             html_url = response.json()["html_url"]
-            gha_utils.echo(f"Pull request opened at {html_url} \U0001F389")
+            gha_utils.notice(f"Pull request opened at {html_url} \U0001F389")
         else:
             gha_utils.error(
                 f"Could not create a pull request on "
