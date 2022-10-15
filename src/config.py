@@ -4,6 +4,16 @@ from typing import Any, NamedTuple
 
 import github_action_utils as gha_utils  # type: ignore
 
+LATEST_RELEASE_TAG = "latest-release-tag"
+LATEST_RELEASE_COMMIT_SHA = "latest-release-commit-sha"
+DEFAULT_BRANCH_COMMIT_SHA = "default-branch-commit-sha"
+
+AVAILABLE_VERSION_TYPES = [
+    LATEST_RELEASE_TAG,
+    LATEST_RELEASE_COMMIT_SHA,
+    DEFAULT_BRANCH_COMMIT_SHA,
+]
+
 
 class ActionEnvironment(NamedTuple):
     repository: str
@@ -29,6 +39,7 @@ class Configuration(NamedTuple):
     pull_request_title: str = "Update GitHub Action Versions"
     commit_message: str = "Update GitHub Action Versions"
     ignore_actions: set[str] = set()
+    version_type: str = "latest-release-tag"
 
     @property
     def git_commit_author(self) -> str:
@@ -58,6 +69,7 @@ class Configuration(NamedTuple):
             "pull_request_title": env.get("INPUT_PULL_REQUEST_TITLE"),
             "commit_message": env.get("INPUT_COMMIT_MESSAGE"),
             "ignore_actions": env.get("INPUT_IGNORE"),
+            "version_type": env.get("INPUT_VERSION_TYPE"),
         }
         return user_config
 
@@ -95,7 +107,20 @@ class Configuration(NamedTuple):
             return None
 
     @staticmethod
-    def clean_skip_pull_request(value: Any) -> bool:
+    def clean_skip_pull_request(value: Any) -> bool | None:
         if value in [1, "1", True, "true", "True"]:
             return True
-        return False
+        return None
+
+    @staticmethod
+    def clean_version_type(value: Any) -> str | None:
+        if value and value not in AVAILABLE_VERSION_TYPES:
+            gha_utils.error(
+                "Invalid input for `version_type` field, "
+                f"expected one of {AVAILABLE_VERSION_TYPES} but got `{value}`"
+            )
+            raise SystemExit(1)
+        elif value:
+            return value
+        else:
+            return None
