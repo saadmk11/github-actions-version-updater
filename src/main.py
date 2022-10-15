@@ -82,7 +82,7 @@ class GitHubActionsVersionUpdater:
                             continue
 
                         new_version, new_version_data = self.get_version(
-                            action_repository, current_version
+                            action_repository
                         )
 
                         if not new_version:
@@ -160,22 +160,22 @@ class GitHubActionsVersionUpdater:
         if self.user_config.update_version_with == LATEST_RELEASE_TAG:
             return (
                 f"{start} published a new release "
-                f"[{version_data['tag_name']}]({version_data['html_url']}) "
+                f"**[{version_data['tag_name']}]({version_data['html_url']})** "
                 f"on {version_data['published_at']}\n"
             )
         elif self.user_config.update_version_with == LATEST_RELEASE_COMMIT_SHA:
             return (
                 f"{start} added a new "
-                f"[commit]({version_data['commit_url']}) to "
-                f"[{version_data['tag_name']}]({version_data['html_url']}) "
+                f"**[commit]({version_data['commit_url']})** to "
+                f"**[{version_data['tag_name']}]({version_data['html_url']})** Tag "
                 f"on {version_data['commit_date']}\n"
             )
         else:
             return (
                 f"{start} added a new "
-                f"([commit]({version_data['commit_url']})) to "
-                f"[{version_data['branch_name']}]({version_data['branch_url']}) "
-                f"on {version_data['commit_date']}\n"
+                f"**[commit]({version_data['commit_url']})** to "
+                f"**[{version_data['branch_name']}]({version_data['branch_url']})** "
+                f"branch on {version_data['commit_date']}\n"
             )
 
     def get_latest_release(self, action_repository: str) -> dict[str, str]:
@@ -246,13 +246,10 @@ class GitHubActionsVersionUpdater:
 
         return None
 
-    def get_version(
-        self, action_repository: str, current_version: str
-    ) -> tuple[str | None, dict]:
+    def get_version(self, action_repository: str) -> tuple[str | None, dict]:
         """Get the latest version for the action"""
         if self.user_config.update_version_with == LATEST_RELEASE_TAG:
             version_data = self.get_latest_release(action_repository)
-
             return version_data.get("tag_name"), version_data
 
         elif self.user_config.update_version_with == LATEST_RELEASE_COMMIT_SHA:
