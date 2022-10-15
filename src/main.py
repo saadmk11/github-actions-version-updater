@@ -140,7 +140,7 @@ class GitHubActionsVersionUpdater:
                 add_git_diff_to_job_summary()
                 gha_utils.error(
                     "Updates found but skipping pull request. "
-                    "Checkout build summary for details"
+                    "Checkout build summary for details."
                 )
                 raise SystemExit(1)
         else:
