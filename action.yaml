@@ -32,6 +32,10 @@ inputs:
     description: 'Skip Pull Request creation'
     required: false
     default: 'false'
+  version_type:
+    description: 'Version Type to use. options: "latest-release-tag" (default), "latest-release-commit-sha", "default-branch-commit-sha"'
+    required: false
+    default: 'latest-release-tag'
 runs:
   using: 'docker'
   image: 'Dockerfile'
