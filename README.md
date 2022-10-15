@@ -6,9 +6,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/saadmk11/github-actions-version-updater?color=success&style=flat-square)](https://github.com/saadmk11/github-actions-version-updater/stargazers)
 ![GitHub Workflow Status](https://img.shields.io/github/workflow/status/saadmk11/github-actions-version-updater/Changelog%20CI?label=Changelog%20CI&style=flat-square)
 
-**GitHub Actions Version Updater** is GitHub Action that is used to **update other GitHub Actions** in a Repository
-and create a **pull request** with the updates. It is an automated dependency updater similar to GitHub's **Dependabot**,
-but for GitHub Actions.
+**GitHub Actions Version Updater** is GitHub Action that is used to **All GitHub Actions** in a Repository
+and create a **pull request** with the updates (if enabled).
+It is an automated dependency updater similar to GitHub's **Dependabot** but for GitHub Actions.
 
 ### How Does It Work:
 
@@ -18,9 +18,9 @@ but for GitHub Actions.
 * If an update is found and if that action is **not ignored** then the workflows are updated
   with the **latest release** of the action being used.
 
-* If at least one workflow file is updated then a new branch is created with the changes and pushed to GitHub.
+* If at least one workflow file is updated then a new branch is created with the changes and pushed to GitHub. (If enabled)
 
-* Finally, a pull request is created with the newly created branch.
+* Finally, a pull request is created with the newly created branch. (If enabled)
 
 ### Usage:
 
@@ -68,6 +68,11 @@ jobs:
           # You need to add JSON array inside a string. e.g: '["actions/checkout@v2", "actions/cache@v2"]'
           # Or, add comma separated values. e.g: 'actions/checkout@v2, actions/cache@v2'
           ignore: 'actions/checkout@v2, actions/cache@v2'
+          # Optional, if set to 'true', the action will only check for updates and
+          # exit with a non-zero exit code if an update is found and update the build summary with the diff
+          # otherwise it will create a pull request with the changes
+          # defaults to 'false'
+          skip_pull_request: 'true'
 ```
 
 ### Important Note:
