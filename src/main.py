@@ -275,10 +275,7 @@ class GitHubActionsVersionUpdater:
         if self.user_config.version_from == LATEST_RELEASE_TAG:
             version_data = self.get_latest_release(action_repository)
 
-            return (
-                version_data["tag_name"] if version_data else None,
-                version_data,
-            )
+            return version_data.get("tag_name"), version_data
 
         elif self.user_config.version_from == LATEST_RELEASE_COMMIT_SHA:
             version_data = self.get_latest_release(action_repository)
@@ -297,7 +294,10 @@ class GitHubActionsVersionUpdater:
             version_data.update(
                 {
                     "commit_sha": tag_commit_sha,
-                    "commit_url": tag_commit["url"],
+                    "commit_url": (
+                        f"{self.github_url + action_repository}"
+                        f"/commit/{tag_commit_sha}"
+                    ),
                 }
             )
 
