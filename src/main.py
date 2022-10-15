@@ -8,16 +8,26 @@ import requests
 import yaml
 
 from .config import ActionEnvironment, Configuration
-from .run_git import configure_git_author, create_new_git_branch, git_commit_changes
-from .utils import create_pull_request, display_whats_new, get_request_headers
+from .run_git import (
+    configure_git_author,
+    create_new_git_branch,
+    git_commit_changes,
+    git_has_changes,
+)
+from .utils import (
+    add_git_diff_to_job_summary,
+    create_pull_request,
+    display_whats_new,
+    get_request_headers,
+)
 
 
 class GitHubActionsVersionUpdater:
-    """Main class that checks for updates and creates pull request"""
+    """Check for GitHub Action updates"""
 
     github_api_url = "https://api.github.com"
     github_url = "https://github.com/"
-    action_label = "uses"
+    workflow_action_key = "uses"
 
     def __init__(self, env: ActionEnvironment, user_config: Configuration):
         self.env = env
@@ -26,8 +36,7 @@ class GitHubActionsVersionUpdater:
     def run(self) -> None:
         """Entrypoint to the GitHub Action"""
         workflow_paths = self.get_workflow_paths()
-        pull_request_body = set()
-        workflow_updated = False
+        pull_request_body_lines = set()
 
         if not workflow_paths:
             gha_utils.warning(
@@ -42,19 +51,21 @@ class GitHubActionsVersionUpdater:
             gha_utils.echo(f'Actions "{ignore_actions}" will be skipped')
 
         for workflow_path in workflow_paths:
+            workflow_updated = False
+
             try:
                 with open(workflow_path, "r+") as file, gha_utils.group(
                     f'Checking "{workflow_path}" for updates'
                 ):
                     file_data = file.read()
-                    updated_config = file_data
+                    updated_workflow_data = file_data
 
                     data = yaml.load(file_data, Loader=yaml.FullLoader)
-                    old_action_set = set(self.get_all_actions(data))
+                    all_action_set = set(self.get_all_actions(data))
                     # Remove ignored actions
-                    old_action_set.difference_update(ignore_actions)
+                    all_action_set.difference_update(ignore_actions)
 
-                    for action in old_action_set:
+                    for action in all_action_set:
                         try:
                             action_repository, version = action.split("@")
                         except ValueError:
@@ -74,10 +85,10 @@ class GitHubActionsVersionUpdater:
                         )
 
                         if action != updated_action:
-                            gha_utils.notice(
+                            gha_utils.echo(
                                 f'Found new version for "{action_repository}"'
                             )
-                            pull_request_body.add(
+                            pull_request_body_lines.add(
                                 self.generate_pull_request_body_line(
                                     action_repository, latest_release
                                 )
@@ -85,42 +96,52 @@ class GitHubActionsVersionUpdater:
                             gha_utils.echo(
                                 f'Updating "{action}" with "{updated_action}"'
                             )
-                            updated_config = updated_config.replace(
+                            updated_workflow_data = updated_workflow_data.replace(
                                 action, updated_action
                             )
-                            file.seek(0)
-                            file.write(updated_config)
-                            file.truncate()
                             workflow_updated = True
                         else:
-                            gha_utils.notice(
+                            gha_utils.echo(
                                 f'No updates found for "{action_repository}"'
                             )
+
+                    if workflow_updated:
+                        file.seek(0)
+                        file.write(updated_workflow_data)
+                        file.truncate()
             except Exception:
                 gha_utils.echo(f'Skipping "{workflow_path}"')
 
-        if workflow_updated:
+        if git_has_changes():
             # Use timestamp to ensure uniqueness of the new branch
-            new_branch_name = f"gh-actions-update-{int(time.time())}"
-            create_new_git_branch(self.env.base_branch, new_branch_name)
-            git_commit_changes(
-                self.user_config.commit_message,
-                self.user_config.git_commit_author,
-                new_branch_name,
+            pull_request_body = "### GitHub Actions Version Updates\n" + "".join(
+                pull_request_body_lines
             )
+            gha_utils.append_job_summary(pull_request_body)
 
-            pull_request_body_str = "### GitHub Actions Version Updates\n" + "".join(
-                pull_request_body
-            )
-            create_pull_request(
-                self.user_config.pull_request_title,
-                self.env.repository,
-                self.env.base_branch,
-                new_branch_name,
-                pull_request_body_str,
-                self.user_config.github_token,
-            )
-            gha_utils.append_job_summary(pull_request_body_str)
+            if not self.user_config.skip_pull_request:
+                new_branch_name = f"gh-actions-update-{int(time.time())}"
+                create_new_git_branch(self.env.base_branch, new_branch_name)
+                git_commit_changes(
+                    self.user_config.commit_message,
+                    self.user_config.git_commit_author,
+                    new_branch_name,
+                )
+                create_pull_request(
+                    self.user_config.pull_request_title,
+                    self.env.repository,
+                    self.env.base_branch,
+                    new_branch_name,
+                    pull_request_body,
+                    self.user_config.github_token,
+                )
+            else:
+                add_git_diff_to_job_summary()
+                gha_utils.error(
+                    "Updates found but skipping pull request. "
+                    "Checkout build summary for details"
+                )
+                raise SystemExit(1)
         else:
             gha_utils.notice("Everything is up-to-date! \U0001F389 \U0001F389")
 
@@ -180,10 +201,10 @@ class GitHubActionsVersionUpdater:
         raise SystemExit(1)
 
     def get_all_actions(self, data: Any) -> Generator[str, None, None]:
-        """Recursively get all action names from config"""
+        """Recursively get all action names from workflow data"""
         if isinstance(data, dict):
             for key, value in data.items():
-                if key == self.action_label:
+                if key == self.workflow_action_key:
                     yield value
                 elif isinstance(value, dict) or isinstance(value, list):
                     yield from self.get_all_actions(value)
