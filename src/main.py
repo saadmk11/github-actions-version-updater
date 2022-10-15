@@ -1,4 +1,5 @@
 import os
+import pprint
 import time
 from collections.abc import Generator
 from typing import Any
@@ -220,7 +221,7 @@ if __name__ == "__main__":
         action_environment = ActionEnvironment.from_env(os.environ)
 
         gha_utils.echo("Using Configuration:")
-        gha_utils.echo(user_configuration._asdict())
+        gha_utils.echo(pprint.pformat(user_configuration._asdict()))
 
     # Configure Git Author
     configure_git_author(
