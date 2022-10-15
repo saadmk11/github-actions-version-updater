@@ -6,7 +6,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/saadmk11/github-actions-version-updater?color=success&style=flat-square)](https://github.com/saadmk11/github-actions-version-updater/stargazers)
 ![GitHub Workflow Status](https://img.shields.io/github/workflow/status/saadmk11/github-actions-version-updater/Changelog%20CI?label=Changelog%20CI&style=flat-square)
 
-**GitHub Actions Version Updater** is GitHub Action that is used to **All GitHub Actions** in a Repository
+**GitHub Actions Version Updater** is GitHub Action that is used to **Update All GitHub Actions** in a Repository
 and create a **pull request** with the updates (if enabled).
 It is an automated dependency updater similar to GitHub's **Dependabot** but for GitHub Actions.
 
