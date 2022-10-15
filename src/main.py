@@ -168,7 +168,7 @@ class GitHubActionsVersionUpdater:
                 f"{start} added a new "
                 f"[commit]({version_data['commit_url']}) to "
                 f"[{version_data['tag_name']}]({version_data['html_url']}) "
-                f"on {version_data['published_at']}\n"
+                f"on {version_data['commit_date']}\n"
             )
         else:
             return (
@@ -207,18 +207,16 @@ class GitHubActionsVersionUpdater:
 
     def get_tag_commit(
         self, action_repository: str, tag_name: str
-    ) -> dict[str, str] | None:
-        """Get the commit SHA for a Tag using GitHub API"""
-        url = (
-            f"{self.github_api_url}/repos/{action_repository}/git/refs/tags/{tag_name}"
-        )
+    ) -> dict[str, Any] | None:
+        """Get the commit for a Tag using GitHub API"""
+        url = f"{self.github_api_url}/repos/{action_repository}/commits?sha={tag_name}"
 
         response = requests.get(
             url, headers=get_request_headers(self.user_config.github_token)
         )
 
         if response.status_code == 200:
-            return response.json()["object"]
+            return response.json()[0]
         else:
             gha_utils.warning(
                 f"Could not find tag {tag_name} for "
@@ -294,10 +292,8 @@ class GitHubActionsVersionUpdater:
             version_data.update(
                 {
                     "commit_sha": tag_commit_sha,
-                    "commit_url": (
-                        f"{self.github_url + action_repository}"
-                        f"/commit/{tag_commit_sha}"
-                    ),
+                    "commit_url": tag_commit["html_url"],
+                    "commit_date": tag_commit["commit"]["author"]["date"],
                 }
             )
 
