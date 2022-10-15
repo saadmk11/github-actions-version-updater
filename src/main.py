@@ -189,7 +189,6 @@ class GitHubActionsVersionUpdater:
 
         if response.status_code == 200:
             response_data = response.json()
-
             data = {
                 "published_at": response_data["published_at"],
                 "html_url": response_data["html_url"],
@@ -273,8 +272,8 @@ class GitHubActionsVersionUpdater:
                     "commit_date": tag_commit["commit"]["author"]["date"],
                 }
             )
-
             return tag_commit_sha, version_data
+
         else:
             version_data = {}
             default_branch_name = self.get_default_branch_name(action_repository)
@@ -282,25 +281,26 @@ class GitHubActionsVersionUpdater:
             if not default_branch_name:
                 return None, version_data
 
-            branch_data = self.get_commit_data(action_repository, default_branch_name)
+            branch_commit_sha = self.get_commit_data(
+                action_repository, default_branch_name
+            )
 
-            if not branch_data:
+            if not branch_commit_sha:
                 return None, version_data
 
-            default_branch_commit_sha = branch_data["sha"]
+            default_branch_commit_sha = branch_commit_sha["sha"]
             version_data.update(
                 {
                     "commit_sha": default_branch_commit_sha,
-                    "commit_url": branch_data["html_url"],
+                    "commit_url": branch_commit_sha["html_url"],
                     "branch_name": default_branch_name,
                     "branch_url": (
                         f"{self.github_url}{action_repository}"
                         f"/tree/{default_branch_name}"
                     ),
-                    "commit_date": branch_data["commit"]["author"]["date"],
+                    "commit_date": branch_commit_sha["commit"]["author"]["date"],
                 }
             )
-
             return (
                 default_branch_commit_sha,
                 version_data,
