@@ -84,7 +84,7 @@ def display_whats_new() -> None:
         with gha_utils.group(group_title):
             gha_utils.echo(latest_release_body)
             gha_utils.echo(
-                f"Get More Information about '{latest_release_tag}' "
+                f"\nGet More Information about '{latest_release_tag}' "
                 f"Here: {latest_release_html_url}"
             )
             gha_utils.echo(
