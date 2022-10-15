@@ -6,7 +6,7 @@ import github_action_utils as gha_utils  # type: ignore
 
 LATEST_RELEASE_TAG = "release-tag"
 LATEST_RELEASE_COMMIT_SHA = "release-commit-sha"
-DEFAULT_BRANCH_COMMIT_SHA = "default-branch"
+DEFAULT_BRANCH_COMMIT_SHA = "default-branch-sha"
 
 UPDATE_VERSION_WITH_LIST = [
     LATEST_RELEASE_TAG,
