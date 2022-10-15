@@ -65,9 +65,9 @@ jobs:
           # Access token with `workflow` scope is required
           token: ${{ secrets.WORKFLOW_SECRET }}
           # Do not update these actions (Optional)
-          # You need to add JSON array inside a string
-          # because GitHub Actions does not yet allow `Lists` as input
-          ignore: '["actions/checkout@v2", "actions/cache@v2"]'
+          # You need to add JSON array inside a string. e.g: '["actions/checkout@v2", "actions/cache@v2"]'
+          # Or, add comma separated values. e.g: 'actions/checkout@v2, actions/cache@v2'
+          ignore: 'actions/checkout@v2, actions/cache@v2'
 ```
 
 ### Important Note:

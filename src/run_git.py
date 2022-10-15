@@ -33,17 +33,27 @@ def git_commit_changes(
     Commit the changed files.
     """
     with gha_utils.group("Commit Changes"):
-        gha_utils.echo("Git Status:")
-        run_subprocess_command(["git", "status"])
-
-        gha_utils.echo("Git Diff:")
-        run_subprocess_command(["git", "diff"])
-
         run_subprocess_command(["git", "add", "."])
         run_subprocess_command(
             ["git", "commit", f"--author={commit_author}", "-m", commit_message]
         )
         run_subprocess_command(["git", "push", "-u", "origin", commit_branch_name])
+
+
+def git_has_changes() -> bool:
+    """
+    Check if there are changes to commit.
+    """
+    try:
+        subprocess.check_output(["git", "diff", "--exit-code"])
+        return False
+    except subprocess.CalledProcessError:
+        return True
+
+
+def git_diff() -> str:
+    """Return the git diff"""
+    return subprocess.run(["git", "diff"], capture_output=True, text=True).stdout
 
 
 def run_subprocess_command(command: list[str]) -> None:
