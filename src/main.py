@@ -155,7 +155,7 @@ class GitHubActionsVersionUpdater:
         self, action_repository: str, version_data: dict[str, str]
     ) -> str:
         """Generate pull request body line for pull request body"""
-        start = f"* **[{action_repository}]({self.github_url + action_repository})** "
+        start = f"* **[{action_repository}]({self.github_url + action_repository})**"
 
         if self.user_config.version_from == LATEST_RELEASE_TAG:
             return (
@@ -165,15 +165,15 @@ class GitHubActionsVersionUpdater:
             )
         elif self.user_config.version_from == LATEST_RELEASE_COMMIT_SHA:
             return (
-                f"{start} added a new commit "
-                f"([{version_data['commit_sha']}]({version_data['commit_url']})) for"
+                f"{start} added a new "
+                f"[commit]({version_data['commit_url']}) to "
                 f"[{version_data['tag_name']}]({version_data['html_url']}) "
                 f"on {version_data['published_at']}\n"
             )
         else:
             return (
-                f"{start} published a new commit "
-                f"([{version_data['commit_sha']}]({version_data['commit_url']})) for"
+                f"{start} added a new "
+                f"([commit]({version_data['commit_url']})) to "
                 f"[{version_data['branch_name']}]({version_data['branch_url']}) "
                 f"on {version_data['commit_date']}\n"
             )
