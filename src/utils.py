@@ -55,7 +55,7 @@ def add_git_diff_to_job_summary() -> None:
     markdown_diff = (
         "<details>"
         "<summary>Git Diff</summary>"
-        f"```diff\n{git_diff()}\n```"
+        f"\n\n```diff\n{git_diff()}\n\n```"
         "</details>"
     )
     print(markdown_diff)
