@@ -55,10 +55,9 @@ def add_git_diff_to_job_summary() -> None:
     markdown_diff = (
         "<details>"
         "<summary>Git Diff</summary>"
-        f"\n\n```diff\n{git_diff()}\n\n```"
+        f"\n\n```diff\n{git_diff()}```\n\n"
         "</details>"
     )
-    print(markdown_diff)
     gha_utils.append_job_summary(markdown_diff)
 
 
