@@ -101,7 +101,7 @@ class Configuration(NamedTuple):
                     f"expected JSON array of strings but got `{value}`"
                 )
                 raise SystemExit(1)
-        elif isinstance(value, str):
+        elif value and isinstance(value, str):
             return {s.strip() for s in value.split(",")}
         else:
             return None
