@@ -155,7 +155,7 @@ class GitHubActionsVersionUpdater:
         self, action_repository: str, version_data: dict[str, str]
     ) -> str:
         """Generate pull request body line for pull request body"""
-        start = f"* **[{action_repository}]({self.github_url + action_repository})**"
+        start = f"* **[{action_repository}]({self.github_url}{action_repository})**"
 
         if self.user_config.version_from == LATEST_RELEASE_TAG:
             return (
@@ -205,11 +205,14 @@ class GitHubActionsVersionUpdater:
 
         return data
 
-    def get_tag_commit(
-        self, action_repository: str, tag_name: str
+    def get_commit_data(
+        self, action_repository: str, tag_or_branch_name: str
     ) -> dict[str, Any] | None:
-        """Get the commit for a Tag using GitHub API"""
-        url = f"{self.github_api_url}/repos/{action_repository}/commits?sha={tag_name}"
+        """Get the commit Data for Tag or Branch using GitHub API"""
+        url = (
+            f"{self.github_api_url}/repos"
+            f"/{action_repository}/commits?sha={tag_or_branch_name}"
+        )
 
         response = requests.get(
             url, headers=get_request_headers(self.user_config.github_token)
@@ -219,7 +222,7 @@ class GitHubActionsVersionUpdater:
             return response.json()[0]
         else:
             gha_utils.warning(
-                f"Could not find tag {tag_name} for "
+                f"Could not find commit data for tag/branch {tag_or_branch_name} on "
                 f'"{action_repository}", status code: {response.status_code}'
             )
 
@@ -243,29 +246,6 @@ class GitHubActionsVersionUpdater:
 
         return None
 
-    def get_branch_data(
-        self, action_repository: str, default_branch_name: str
-    ) -> dict[str, Any] | None:
-        """Get the Action Repository's Default Branch Commit SHA using GitHub API"""
-        url = (
-            f"{self.github_api_url}/repos/{action_repository}"
-            f"/branches/{default_branch_name}"
-        )
-
-        response = requests.get(
-            url, headers=get_request_headers(self.user_config.github_token)
-        )
-
-        if response.status_code == 200:
-            return response.json()
-        else:
-            gha_utils.warning(
-                f"Could not find default branch commit SHA for "
-                f'"{action_repository}", status code: {response.status_code}'
-            )
-
-        return None
-
     def get_version(
         self, action_repository: str, current_version: str
     ) -> tuple[str | None, dict]:
@@ -281,7 +261,7 @@ class GitHubActionsVersionUpdater:
             if not version_data:
                 return None, version_data
 
-            tag_commit = self.get_tag_commit(
+            tag_commit = self.get_commit_data(
                 action_repository, version_data["tag_name"]
             )
 
@@ -305,19 +285,21 @@ class GitHubActionsVersionUpdater:
             if not default_branch_name:
                 return None, version_data
 
-            branch_data = self.get_branch_data(action_repository, default_branch_name)
+            branch_data = self.get_commit_data(action_repository, default_branch_name)
 
             if not branch_data:
                 return None, version_data
 
-            default_branch_commit_sha = branch_data["commit"]["sha"]
-
+            default_branch_commit_sha = branch_data["sha"]
             version_data.update(
                 {
                     "commit_sha": default_branch_commit_sha,
-                    "commit_url": branch_data["commit"]["html_url"],
+                    "commit_url": branch_data["html_url"],
                     "branch_name": default_branch_name,
-                    "branch_url": branch_data["_links"]["html"],
+                    "branch_url": (
+                        f"{self.github_url}{action_repository}"
+                        f"/tree/{default_branch_name}"
+                    ),
                     "commit_date": branch_data["commit"]["commit"]["author"]["date"],
                 }
             )
