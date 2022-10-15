@@ -23,6 +23,7 @@ class Configuration(NamedTuple):
     """Configuration class for GitHub Actions Version Updater"""
 
     github_token: str | None = None
+    skip_pull_request: bool = False
     git_committer_username: str = "github-actions[bot]"
     git_committer_email: str = "github-actions[bot]@users.noreply.github.com"
     pull_request_title: str = "Update GitHub Action Versions"
@@ -51,6 +52,7 @@ class Configuration(NamedTuple):
         """
         user_config: dict[str, str | None] = {
             "github_token": env.get("INPUT_TOKEN"),
+            "skip_pull_request": env.get("INPUT_SKIP_PULL_REQUEST"),
             "git_committer_username": env.get("INPUT_COMMITTER_USERNAME"),
             "git_committer_email": env.get("INPUT_COMMITTER_EMAIL"),
             "pull_request_title": env.get("INPUT_PULL_REQUEST_TITLE"),
@@ -91,3 +93,9 @@ class Configuration(NamedTuple):
             return {s.strip() for s in value.split(",")}
         else:
             return None
+
+    @staticmethod
+    def clean_skip_pull_request(value: Any) -> bool:
+        if value in [1, "1", True, "true", "True"]:
+            return True
+        return False
