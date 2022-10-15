@@ -8,7 +8,12 @@ import github_action_utils as gha_utils  # type: ignore
 import requests
 import yaml
 
-from .config import ActionEnvironment, Configuration
+from .config import (
+    LATEST_RELEASE_COMMIT_SHA,
+    LATEST_RELEASE_TAG,
+    ActionEnvironment,
+    Configuration,
+)
 from .run_git import (
     configure_git_author,
     create_new_git_branch,
@@ -68,7 +73,7 @@ class GitHubActionsVersionUpdater:
 
                     for action in all_action_set:
                         try:
-                            action_repository, version = action.split("@")
+                            action_repository, current_version = action.split("@")
                         except ValueError:
                             gha_utils.warning(
                                 f'Action "{action}" is in a wrong format, '
@@ -76,14 +81,14 @@ class GitHubActionsVersionUpdater:
                             )
                             continue
 
-                        latest_release = self.get_latest_release(action_repository)
+                        new_version, new_version_data = self.get_version(
+                            action_repository, current_version
+                        )
 
-                        if not latest_release:
+                        if not new_version:
                             continue
 
-                        updated_action = (
-                            f'{action_repository}@{latest_release["tag_name"]}'
-                        )
+                        updated_action = f"{action_repository}@{new_version}"
 
                         if action != updated_action:
                             gha_utils.echo(
@@ -91,7 +96,7 @@ class GitHubActionsVersionUpdater:
                             )
                             pull_request_body_lines.add(
                                 self.generate_pull_request_body_line(
-                                    action_repository, latest_release
+                                    action_repository, new_version_data
                                 )
                             )
                             gha_utils.echo(
@@ -147,15 +152,31 @@ class GitHubActionsVersionUpdater:
             gha_utils.notice("Everything is up-to-date! \U0001F389 \U0001F389")
 
     def generate_pull_request_body_line(
-        self, action_repository: str, latest_release: dict[str, str]
+        self, action_repository: str, version_data: dict[str, str]
     ) -> str:
         """Generate pull request body line for pull request body"""
-        return (
-            f"* **[{action_repository}]({self.github_url + action_repository})** "
-            "published a new release "
-            f"[{latest_release['tag_name']}]({latest_release['html_url']}) "
-            f"on {latest_release['published_at']}\n"
-        )
+        start = f"* **[{action_repository}]({self.github_url + action_repository})** "
+
+        if self.user_config.version_type == LATEST_RELEASE_TAG:
+            return (
+                f"{start} published a new release "
+                f"[{version_data['tag_name']}]({version_data['html_url']}) "
+                f"on {version_data['published_at']}\n"
+            )
+        elif self.user_config.version_type == LATEST_RELEASE_COMMIT_SHA:
+            return (
+                f"{start} added a new commit "
+                f"([{version_data['commit_sha']}]({version_data['commit_url']})) for"
+                f"[{version_data['tag_name']}]({version_data['html_url']}) "
+                f"on {version_data['published_at']}\n"
+            )
+        else:
+            return (
+                f"{start} published a new commit "
+                f"([{version_data['commit_sha']}]({version_data['commit_url']})) for"
+                f"[{version_data['branch_name']}]({version_data['branch_url']}) "
+                f"on {version_data['commit_date']}\n"
+            )
 
     def get_latest_release(self, action_repository: str) -> dict[str, str]:
         """Get the latest release using GitHub API"""
@@ -183,6 +204,132 @@ class GitHubActionsVersionUpdater:
             )
 
         return data
+
+    def get_tag_commit(
+        self, action_repository: str, tag_name: str
+    ) -> dict[str, str] | None:
+        """Get the commit SHA for a Tag using GitHub API"""
+        url = (
+            f"{self.github_api_url}/repos/{action_repository}/git/refs/tags/{tag_name}"
+        )
+
+        response = requests.get(
+            url, headers=get_request_headers(self.user_config.github_token)
+        )
+
+        if response.status_code == 200:
+            return response.json()["object"]
+        else:
+            gha_utils.warning(
+                f"Could not find tag {tag_name} for "
+                f'"{action_repository}", status code: {response.status_code}'
+            )
+
+        return None
+
+    def get_default_branch_name(self, action_repository: str) -> str | None:
+        """Get the Action Repository's Default Branch Name using GitHub API"""
+        url = f"{self.github_api_url}/repos/{action_repository}"
+
+        response = requests.get(
+            url, headers=get_request_headers(self.user_config.github_token)
+        )
+
+        if response.status_code == 200:
+            return response.json()["default_branch"]
+        else:
+            gha_utils.warning(
+                f"Could not find default branch for "
+                f'"{action_repository}", status code: {response.status_code}'
+            )
+
+        return None
+
+    def get_branch_data(
+        self, action_repository: str, default_branch_name: str
+    ) -> dict[str, Any] | None:
+        """Get the Action Repository's Default Branch Commit SHA using GitHub API"""
+        url = (
+            f"{self.github_api_url}/repos/{action_repository}"
+            f"/branches/{default_branch_name}"
+        )
+
+        response = requests.get(
+            url, headers=get_request_headers(self.user_config.github_token)
+        )
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            gha_utils.warning(
+                f"Could not find default branch commit SHA for "
+                f'"{action_repository}", status code: {response.status_code}'
+            )
+
+        return None
+
+    def get_version(
+        self, action_repository: str, current_version: str
+    ) -> tuple[str | None, dict]:
+        """Get the latest version for the action"""
+        if self.user_config.version_type == LATEST_RELEASE_TAG:
+            version_data = self.get_latest_release(action_repository)
+
+            return (
+                version_data["tag_name"] if version_data else None,
+                version_data,
+            )
+
+        elif self.user_config.version_type == LATEST_RELEASE_COMMIT_SHA:
+            version_data = self.get_latest_release(action_repository)
+
+            if not version_data:
+                return None, version_data
+
+            tag_commit = self.get_tag_commit(
+                action_repository, version_data["tag_name"]
+            )
+
+            if not tag_commit:
+                return None, version_data
+
+            tag_commit_sha = tag_commit["sha"]
+            version_data.update(
+                {
+                    "commit_sha": tag_commit_sha,
+                    "commit_url": tag_commit["url"],
+                }
+            )
+
+            return tag_commit_sha, version_data
+        else:
+            version_data = {}
+            default_branch_name = self.get_default_branch_name(action_repository)
+
+            if not default_branch_name:
+                return None, version_data
+
+            branch_data = self.get_branch_data(action_repository, default_branch_name)
+
+            if not branch_data:
+                return None, version_data
+
+            default_branch_commit_sha = branch_data["commit"]["sha"]
+
+            version_data.update(
+                {
+                    "commit_sha": default_branch_commit_sha,
+                    "commit_url": branch_data["commit"]["html_url"],
+                    "branch_name": default_branch_name,
+                    "branch_url": branch_data["_links"]["html"],
+                    "commit_date": branch_data["commit"]["commit"]["author"]["date"],
+                }
+            )
+
+            return (
+                default_branch_commit_sha,
+                version_data,
+            )
 
     def get_workflow_paths(self) -> list[str]:
         """Get all workflows of the repository using GitHub API"""
