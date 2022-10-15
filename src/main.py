@@ -157,13 +157,13 @@ class GitHubActionsVersionUpdater:
         """Generate pull request body line for pull request body"""
         start = f"* **[{action_repository}]({self.github_url + action_repository})** "
 
-        if self.user_config.version_type == LATEST_RELEASE_TAG:
+        if self.user_config.version_from == LATEST_RELEASE_TAG:
             return (
                 f"{start} published a new release "
                 f"[{version_data['tag_name']}]({version_data['html_url']}) "
                 f"on {version_data['published_at']}\n"
             )
-        elif self.user_config.version_type == LATEST_RELEASE_COMMIT_SHA:
+        elif self.user_config.version_from == LATEST_RELEASE_COMMIT_SHA:
             return (
                 f"{start} added a new commit "
                 f"([{version_data['commit_sha']}]({version_data['commit_url']})) for"
@@ -272,7 +272,7 @@ class GitHubActionsVersionUpdater:
         self, action_repository: str, current_version: str
     ) -> tuple[str | None, dict]:
         """Get the latest version for the action"""
-        if self.user_config.version_type == LATEST_RELEASE_TAG:
+        if self.user_config.version_from == LATEST_RELEASE_TAG:
             version_data = self.get_latest_release(action_repository)
 
             return (
@@ -280,7 +280,7 @@ class GitHubActionsVersionUpdater:
                 version_data,
             )
 
-        elif self.user_config.version_type == LATEST_RELEASE_COMMIT_SHA:
+        elif self.user_config.version_from == LATEST_RELEASE_COMMIT_SHA:
             version_data = self.get_latest_release(action_repository)
 
             if not version_data:
