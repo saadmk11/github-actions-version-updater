@@ -116,7 +116,7 @@ class GitHubActionsVersionUpdater:
                         file.write(updated_workflow_data)
                         file.truncate()
             except Exception as e:
-                gha_utils.echo(f'Skipping "{workflow_path}". Reason: {e}')
+                gha_utils.echo(f'Skipping "{workflow_path}". Reason: {str(e)}')
 
         if git_has_changes():
             # Use timestamp to ensure uniqueness of the new branch
@@ -300,7 +300,7 @@ class GitHubActionsVersionUpdater:
                         f"{self.github_url}{action_repository}"
                         f"/tree/{default_branch_name}"
                     ),
-                    "commit_date": branch_data["commit"]["commit"]["author"]["date"],
+                    "commit_date": branch_data["commit"]["author"]["date"],
                 }
             )
 
