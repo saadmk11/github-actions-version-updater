@@ -94,6 +94,9 @@ class GitHubActionsVersionUpdater:
                     )
 
                     if not new_version:
+                        gha_utils.warning(
+                            f"Could not find any new version for {action}. Skipping..."
+                        )
                         continue
 
                     updated_action = f"{action_repository}@{new_version}"
@@ -145,7 +148,7 @@ class GitHubActionsVersionUpdater:
                 add_git_diff_to_job_summary()
                 gha_utils.error(
                     "Updates found but skipping pull request. "
-                    "Checkout build summary for details."
+                    "Checkout build summary for update details."
                 )
                 raise SystemExit(1)
         else:
@@ -206,7 +209,7 @@ class GitHubActionsVersionUpdater:
 
     def _get_commit_data(
         self, action_repository: str, tag_or_branch_name: str
-    ) -> dict[str, Any] | None:
+    ) -> dict[str, str]:
         """Get the commit Data for Tag or Branch using GitHub API"""
         url = (
             f"{self.github_api_url}/repos"
@@ -218,13 +221,19 @@ class GitHubActionsVersionUpdater:
         )
 
         if response.status_code == 200:
-            return response.json()[0]
+            response_data = response.json()[0]
+
+            return {
+                "commit_sha": response_data["sha"],
+                "commit_url": response_data["html_url"],
+                "commit_date": response_data["commit"]["author"]["date"],
+            }
 
         gha_utils.warning(
             f"Could not find commit data for tag/branch {tag_or_branch_name} on "
             f'"{action_repository}", status code: {response.status_code}'
         )
-        return None
+        return {}
 
     def _get_default_branch_name(self, action_repository: str) -> str | None:
         """Get the Action Repository's Default Branch Name using GitHub API"""
@@ -245,66 +254,51 @@ class GitHubActionsVersionUpdater:
 
     # flake8: noqa: B019
     @cache
-    def _get_new_version(self, action_repository: str) -> tuple[str | None, dict]:
+    def _get_new_version(
+        self, action_repository: str
+    ) -> tuple[str | None, dict[str, str]]:
         """Get the latest version for the action"""
+
         if self.user_config.update_version_with == LATEST_RELEASE_TAG:
-            version_data = self._get_latest_release(action_repository)
-            return version_data.get("tag_name"), version_data
+            latest_release_data = self._get_latest_release(action_repository)
+            return latest_release_data.get("tag_name"), latest_release_data
 
         elif self.user_config.update_version_with == LATEST_RELEASE_COMMIT_SHA:
-            version_data = self._get_latest_release(action_repository)
+            latest_release_data = self._get_latest_release(action_repository)
 
-            if not version_data:
-                return None, version_data
+            if not latest_release_data:
+                return None, {}
 
             tag_commit_data = self._get_commit_data(
-                action_repository, version_data["tag_name"]
+                action_repository, latest_release_data["tag_name"]
             )
 
             if not tag_commit_data:
-                return None, version_data
+                return None, {}
 
-            tag_commit_sha = tag_commit_data["sha"]
-            version_data.update(
-                {
-                    "commit_sha": tag_commit_sha,
-                    "commit_url": tag_commit_data["html_url"],
-                    "commit_date": tag_commit_data["commit"]["author"]["date"],
-                }
-            )
-            return tag_commit_sha, version_data
+            return tag_commit_data["commit_sha"], tag_commit_data
 
         else:
-            version_data = {}
             default_branch_name = self._get_default_branch_name(action_repository)
 
             if not default_branch_name:
-                return None, version_data
+                return None, {}
 
             branch_commit_data = self._get_commit_data(
                 action_repository, default_branch_name
             )
 
             if not branch_commit_data:
-                return None, version_data
+                return None, {}
 
-            default_branch_commit_sha = branch_commit_data["sha"]
-            version_data.update(
-                {
-                    "commit_sha": default_branch_commit_sha,
-                    "commit_url": branch_commit_data["html_url"],
-                    "branch_name": default_branch_name,
-                    "branch_url": (
-                        f"{self.github_url}{action_repository}"
-                        f"/tree/{default_branch_name}"
-                    ),
-                    "commit_date": branch_commit_data["commit"]["author"]["date"],
-                }
-            )
-            return (
-                default_branch_commit_sha,
-                version_data,
-            )
+            return branch_commit_data["commit_sha"], {
+                "branch_name": default_branch_name,
+                "branch_url": (
+                    f"{self.github_url}{action_repository}"
+                    f"/tree/{default_branch_name}"
+                ),
+                **branch_commit_data,
+            }
 
     def _get_workflow_paths(self) -> list[str]:
         """Get all workflows of the repository using GitHub API"""
