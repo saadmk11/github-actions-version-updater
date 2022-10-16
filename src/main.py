@@ -193,19 +193,20 @@ class GitHubActionsVersionUpdater:
         )
 
         if response.status_code == 200:
-            # Sort through the releases (default 30 latest release) returned
-            # by GitHub API and find the latest version release
-            response_data = sorted(response.json(), key=parse_version)[-1]
+            response_data = response.json()
 
             if response_data:
+                # Sort through the releases (default 30 latest release) returned
+                # by GitHub API and find the latest version release
+                sorted_data = sorted(
+                    response_data, key=lambda r: parse_version(r["tag_name"])
+                )[-1]
                 return {
-                    "published_at": response_data["published_at"],
-                    "html_url": response_data["html_url"],
-                    "tag_name": response_data["tag_name"],
-                    "body": response_data["body"],
+                    "published_at": sorted_data["published_at"],
+                    "html_url": sorted_data["html_url"],
+                    "tag_name": sorted_data["tag_name"],
                 }
 
-        # if there is no previous release API will return 404 Not Found
         gha_utils.warning(
             f"Could not find any release for "
             f'"{action_repository}", status code: {response.status_code}'
