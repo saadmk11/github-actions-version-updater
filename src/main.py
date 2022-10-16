@@ -276,7 +276,10 @@ class GitHubActionsVersionUpdater:
             if not tag_commit_data:
                 return None, {}
 
-            return tag_commit_data["commit_sha"], tag_commit_data
+            return tag_commit_data["commit_sha"], {
+                **latest_release_data,
+                **tag_commit_data,
+            }
 
         else:
             default_branch_name = self._get_default_branch_name(action_repository)
