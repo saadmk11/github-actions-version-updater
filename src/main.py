@@ -2,6 +2,7 @@ import os
 import pprint
 import time
 from collections.abc import Generator
+from functools import cache
 from typing import Any
 
 import github_action_utils as gha_utils  # type: ignore
@@ -41,7 +42,7 @@ class GitHubActionsVersionUpdater:
 
     def run(self) -> None:
         """Entrypoint to the GitHub Action"""
-        workflow_paths = self.get_workflow_paths()
+        workflow_paths = self._get_workflow_paths()
         pull_request_body_lines = set()
 
         if not workflow_paths:
@@ -59,64 +60,63 @@ class GitHubActionsVersionUpdater:
         for workflow_path in workflow_paths:
             workflow_updated = False
 
-            try:
-                with open(workflow_path, "r+") as file, gha_utils.group(
-                    f'Checking "{workflow_path}" for updates'
-                ):
-                    file_data = file.read()
-                    updated_workflow_data = file_data
+            with open(workflow_path, "r+") as file, gha_utils.group(
+                f'Checking "{workflow_path}" for updates'
+            ):
+                file_data = file.read()
+                updated_workflow_data = file_data
 
-                    data = yaml.load(file_data, Loader=yaml.FullLoader)
-                    all_action_set = set(self.get_all_actions(data))
-                    # Remove ignored actions
-                    all_action_set.difference_update(ignore_actions)
+                try:
+                    workflow_data = yaml.load(file_data, Loader=yaml.FullLoader)
+                except yaml.YAMLError as exc:
+                    gha_utils.error(
+                        f"Error while parsing YAML from {workflow_path}. "
+                        f"Reason: {exc}"
+                    )
+                    continue
 
-                    for action in all_action_set:
-                        try:
-                            action_repository, current_version = action.split("@")
-                        except ValueError:
-                            gha_utils.warning(
-                                f'Action "{action}" is in a wrong format, '
-                                "We only support community actions currently"
-                            )
-                            continue
+                all_actions = set(self._get_all_actions(workflow_data))
+                # Remove ignored actions
+                all_actions.difference_update(ignore_actions)
 
-                        new_version, new_version_data = self.get_version(
-                            action_repository
+                for action in all_actions:
+                    try:
+                        action_repository, current_version = action.split("@")
+                    except ValueError:
+                        gha_utils.warning(
+                            f'Action "{action}" is in a wrong format, '
+                            "We only support community actions currently"
                         )
+                        continue
 
-                        if not new_version:
-                            continue
+                    new_version, new_version_data = self._get_new_version(
+                        action_repository
+                    )
 
-                        updated_action = f"{action_repository}@{new_version}"
+                    if not new_version:
+                        continue
 
-                        if action != updated_action:
-                            gha_utils.echo(
-                                f'Found new version for "{action_repository}"'
-                            )
-                            pull_request_body_lines.add(
-                                self.generate_pull_request_body_line(
-                                    action_repository, new_version_data
-                                )
-                            )
-                            gha_utils.echo(
-                                f'Updating "{action}" with "{updated_action}"'
-                            )
-                            updated_workflow_data = updated_workflow_data.replace(
-                                action, updated_action
-                            )
-                            workflow_updated = True
-                        else:
-                            gha_utils.echo(
-                                f'No updates found for "{action_repository}"'
-                            )
+                    updated_action = f"{action_repository}@{new_version}"
 
-                    if workflow_updated:
-                        file.seek(0)
-                        file.write(updated_workflow_data)
-                        file.truncate()
-            except Exception as e:
-                gha_utils.echo(f'Skipping "{workflow_path}". Reason: {str(e)}')
+                    if action != updated_action:
+                        gha_utils.echo(f'Found new version for "{action_repository}"')
+                        pull_request_body_lines.add(
+                            self._generate_pull_request_body_line(
+                                action_repository, new_version_data
+                            )
+                        )
+                        gha_utils.echo(f'Updating "{action}" with "{updated_action}"')
+                        updated_workflow_data = updated_workflow_data.replace(
+                            action, updated_action
+                        )
+                        workflow_updated = True
+                    else:
+                        gha_utils.echo(f'No updates found for "{action_repository}"')
+
+                if workflow_updated:
+                    file.seek(0)
+                    file.write(updated_workflow_data)
+                    file.truncate()
 
         if git_has_changes():
             # Use timestamp to ensure uniqueness of the new branch
@@ -151,7 +151,7 @@ class GitHubActionsVersionUpdater:
         else:
             gha_utils.notice("Everything is up-to-date! \U0001F389 \U0001F389")
 
-    def generate_pull_request_body_line(
+    def _generate_pull_request_body_line(
         self, action_repository: str, version_data: dict[str, str]
     ) -> str:
         """Generate pull request body line for pull request body"""
@@ -178,7 +178,7 @@ class GitHubActionsVersionUpdater:
                 f"branch on {version_data['commit_date']}\n"
             )
 
-    def get_latest_release(self, action_repository: str) -> dict[str, str]:
+    def _get_latest_release(self, action_repository: str) -> dict[str, str]:
         """Get the latest release using GitHub API"""
         url = f"{self.github_api_url}/repos/{action_repository}/releases/latest"
 
@@ -204,7 +204,7 @@ class GitHubActionsVersionUpdater:
 
         return data
 
-    def get_commit_data(
+    def _get_commit_data(
         self, action_repository: str, tag_or_branch_name: str
     ) -> dict[str, Any] | None:
         """Get the commit Data for Tag or Branch using GitHub API"""
@@ -219,15 +219,14 @@ class GitHubActionsVersionUpdater:
 
         if response.status_code == 200:
             return response.json()[0]
-        else:
-            gha_utils.warning(
-                f"Could not find commit data for tag/branch {tag_or_branch_name} on "
-                f'"{action_repository}", status code: {response.status_code}'
-            )
 
+        gha_utils.warning(
+            f"Could not find commit data for tag/branch {tag_or_branch_name} on "
+            f'"{action_repository}", status code: {response.status_code}'
+        )
         return None
 
-    def get_default_branch_name(self, action_repository: str) -> str | None:
+    def _get_default_branch_name(self, action_repository: str) -> str | None:
         """Get the Action Repository's Default Branch Name using GitHub API"""
         url = f"{self.github_api_url}/repos/{action_repository}"
 
@@ -237,68 +236,69 @@ class GitHubActionsVersionUpdater:
 
         if response.status_code == 200:
             return response.json()["default_branch"]
-        else:
-            gha_utils.warning(
-                f"Could not find default branch for "
-                f'"{action_repository}", status code: {response.status_code}'
-            )
 
+        gha_utils.warning(
+            f"Could not find default branch for "
+            f'"{action_repository}", status code: {response.status_code}'
+        )
         return None
 
-    def get_version(self, action_repository: str) -> tuple[str | None, dict]:
+    # flake8: noqa: B019
+    @cache
+    def _get_new_version(self, action_repository: str) -> tuple[str | None, dict]:
         """Get the latest version for the action"""
         if self.user_config.update_version_with == LATEST_RELEASE_TAG:
-            version_data = self.get_latest_release(action_repository)
+            version_data = self._get_latest_release(action_repository)
             return version_data.get("tag_name"), version_data
 
         elif self.user_config.update_version_with == LATEST_RELEASE_COMMIT_SHA:
-            version_data = self.get_latest_release(action_repository)
+            version_data = self._get_latest_release(action_repository)
 
             if not version_data:
                 return None, version_data
 
-            tag_commit = self.get_commit_data(
+            tag_commit_data = self._get_commit_data(
                 action_repository, version_data["tag_name"]
             )
 
-            if not tag_commit:
+            if not tag_commit_data:
                 return None, version_data
 
-            tag_commit_sha = tag_commit["sha"]
+            tag_commit_sha = tag_commit_data["sha"]
             version_data.update(
                 {
                     "commit_sha": tag_commit_sha,
-                    "commit_url": tag_commit["html_url"],
-                    "commit_date": tag_commit["commit"]["author"]["date"],
+                    "commit_url": tag_commit_data["html_url"],
+                    "commit_date": tag_commit_data["commit"]["author"]["date"],
                 }
             )
             return tag_commit_sha, version_data
 
         else:
             version_data = {}
-            default_branch_name = self.get_default_branch_name(action_repository)
+            default_branch_name = self._get_default_branch_name(action_repository)
 
             if not default_branch_name:
                 return None, version_data
 
-            branch_commit_sha = self.get_commit_data(
+            branch_commit_data = self._get_commit_data(
                 action_repository, default_branch_name
             )
 
-            if not branch_commit_sha:
+            if not branch_commit_data:
                 return None, version_data
 
-            default_branch_commit_sha = branch_commit_sha["sha"]
+            default_branch_commit_sha = branch_commit_data["sha"]
             version_data.update(
                 {
                     "commit_sha": default_branch_commit_sha,
-                    "commit_url": branch_commit_sha["html_url"],
+                    "commit_url": branch_commit_data["html_url"],
                     "branch_name": default_branch_name,
                     "branch_url": (
                         f"{self.github_url}{action_repository}"
                         f"/tree/{default_branch_name}"
                     ),
-                    "commit_date": branch_commit_sha["commit"]["author"]["date"],
+                    "commit_date": branch_commit_data["commit"]["author"]["date"],
                 }
             )
             return (
@@ -306,7 +306,7 @@ class GitHubActionsVersionUpdater:
                 version_data,
             )
 
-    def get_workflow_paths(self) -> list[str]:
+    def _get_workflow_paths(self) -> list[str]:
         """Get all workflows of the repository using GitHub API"""
         url = f"{self.github_api_url}/repos/{self.env.repository}/actions/workflows"
 
@@ -323,18 +323,18 @@ class GitHubActionsVersionUpdater:
         )
         raise SystemExit(1)
 
-    def get_all_actions(self, data: Any) -> Generator[str, None, None]:
+    def _get_all_actions(self, data: Any) -> Generator[str, None, None]:
         """Recursively get all action names from workflow data"""
         if isinstance(data, dict):
             for key, value in data.items():
                 if key == self.workflow_action_key:
                     yield value
                 elif isinstance(value, dict) or isinstance(value, list):
-                    yield from self.get_all_actions(value)
+                    yield from self._get_all_actions(value)
 
         elif isinstance(data, list):
             for element in data:
-                yield from self.get_all_actions(element)
+                yield from self._get_all_actions(element)
 
 
 if __name__ == "__main__":
