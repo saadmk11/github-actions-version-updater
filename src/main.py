@@ -8,6 +8,7 @@ from typing import Any
 import github_action_utils as gha_utils  # type: ignore
 import requests
 import yaml
+from pkg_resources import parse_version
 
 from .config import (
     LATEST_RELEASE_COMMIT_SHA,
@@ -70,7 +71,7 @@ class GitHubActionsVersionUpdater:
                     workflow_data = yaml.load(file_data, Loader=yaml.FullLoader)
                 except yaml.YAMLError as exc:
                     gha_utils.error(
-                        f"Error while parsing YAML from {workflow_path}. "
+                        f"Error while parsing YAML from '{workflow_path}' file. "
                         f"Reason: {exc}"
                     )
                     continue
@@ -108,7 +109,9 @@ class GitHubActionsVersionUpdater:
                                 action_repository, new_version_data
                             )
                         )
-                        gha_utils.echo(f'Updating "{action}" with "{updated_action}"')
+                        gha_utils.echo(
+                            f'Updating "{action}" with "{updated_action}"...'
+                        )
                         updated_workflow_data = updated_workflow_data.replace(
                             action, updated_action
                         )
@@ -181,9 +184,9 @@ class GitHubActionsVersionUpdater:
                 f"branch on {version_data['commit_date']}\n"
             )
 
-    def _get_latest_release(self, action_repository: str) -> dict[str, str]:
+    def _get_latest_version_release(self, action_repository: str) -> dict[str, str]:
         """Get the latest release using GitHub API"""
-        url = f"{self.github_api_url}/repos/{action_repository}/releases/latest"
+        url = f"{self.github_api_url}/repos/{action_repository}/releases"
 
         response = requests.get(
             url, headers=get_request_headers(self.user_config.github_token)
@@ -191,7 +194,9 @@ class GitHubActionsVersionUpdater:
         data = {}
 
         if response.status_code == 200:
-            response_data = response.json()
+            # Sort through the releases (default 30 latest release) returned
+            # by GitHub API and find the latest version release
+            response_data = sorted(response.json(), key=parse_version)[-1]
             data = {
                 "published_at": response_data["published_at"],
                 "html_url": response_data["html_url"],
@@ -257,14 +262,15 @@ class GitHubActionsVersionUpdater:
     def _get_new_version(
         self, action_repository: str
     ) -> tuple[str | None, dict[str, str]]:
-        """Get the latest version for the action"""
+        """Get the new version for the action"""
+        gha_utils.echo(f'Checking "{action_repository}" for updates...')
 
         if self.user_config.update_version_with == LATEST_RELEASE_TAG:
-            latest_release_data = self._get_latest_release(action_repository)
+            latest_release_data = self._get_latest_version_release(action_repository)
             return latest_release_data.get("tag_name"), latest_release_data
 
         elif self.user_config.update_version_with == LATEST_RELEASE_COMMIT_SHA:
-            latest_release_data = self._get_latest_release(action_repository)
+            latest_release_data = self._get_latest_version_release(action_repository)
 
             if not latest_release_data:
                 return None, {}
