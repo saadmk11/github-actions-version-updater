@@ -191,26 +191,26 @@ class GitHubActionsVersionUpdater:
         response = requests.get(
             url, headers=get_request_headers(self.user_config.github_token)
         )
-        data = {}
 
         if response.status_code == 200:
             # Sort through the releases (default 30 latest release) returned
             # by GitHub API and find the latest version release
             response_data = sorted(response.json(), key=parse_version)[-1]
-            data = {
-                "published_at": response_data["published_at"],
-                "html_url": response_data["html_url"],
-                "tag_name": response_data["tag_name"],
-                "body": response_data["body"],
-            }
-        else:
-            # if there is no previous release API will return 404 Not Found
-            gha_utils.warning(
-                f"Could not find any release for "
-                f'"{action_repository}", status code: {response.status_code}'
-            )
 
-        return data
+            if response_data:
+                return {
+                    "published_at": response_data["published_at"],
+                    "html_url": response_data["html_url"],
+                    "tag_name": response_data["tag_name"],
+                    "body": response_data["body"],
+                }
+
+        # if there is no previous release API will return 404 Not Found
+        gha_utils.warning(
+            f"Could not find any release for "
+            f'"{action_repository}", status code: {response.status_code}'
+        )
+        return {}
 
     def _get_commit_data(
         self, action_repository: str, tag_or_branch_name: str
