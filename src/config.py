@@ -4,6 +4,16 @@ from typing import Any, NamedTuple
 
 import github_action_utils as gha_utils  # type: ignore
 
+LATEST_RELEASE_TAG = "release-tag"
+LATEST_RELEASE_COMMIT_SHA = "release-commit-sha"
+DEFAULT_BRANCH_COMMIT_SHA = "default-branch-sha"
+
+UPDATE_VERSION_WITH_LIST = [
+    LATEST_RELEASE_TAG,
+    LATEST_RELEASE_COMMIT_SHA,
+    DEFAULT_BRANCH_COMMIT_SHA,
+]
+
 
 class ActionEnvironment(NamedTuple):
     repository: str
@@ -29,6 +39,7 @@ class Configuration(NamedTuple):
     pull_request_title: str = "Update GitHub Action Versions"
     commit_message: str = "Update GitHub Action Versions"
     ignore_actions: set[str] = set()
+    update_version_with: str = LATEST_RELEASE_TAG
 
     @property
     def git_commit_author(self) -> str:
@@ -58,6 +69,7 @@ class Configuration(NamedTuple):
             "pull_request_title": env.get("INPUT_PULL_REQUEST_TITLE"),
             "commit_message": env.get("INPUT_COMMIT_MESSAGE"),
             "ignore_actions": env.get("INPUT_IGNORE"),
+            "update_version_with": env.get("INPUT_UPDATE_VERSION_WITH"),
         }
         return user_config
 
@@ -89,13 +101,26 @@ class Configuration(NamedTuple):
                     f"expected JSON array of strings but got `{value}`"
                 )
                 raise SystemExit(1)
-        elif isinstance(value, str):
+        elif value and isinstance(value, str):
             return {s.strip() for s in value.split(",")}
         else:
             return None
 
     @staticmethod
-    def clean_skip_pull_request(value: Any) -> bool:
+    def clean_skip_pull_request(value: Any) -> bool | None:
         if value in [1, "1", True, "true", "True"]:
             return True
-        return False
+        return None
+
+    @staticmethod
+    def clean_update_version_with(value: Any) -> str | None:
+        if value and value not in UPDATE_VERSION_WITH_LIST:
+            gha_utils.error(
+                "Invalid input for `update_version_with` field, "
+                f"expected one of {UPDATE_VERSION_WITH_LIST} but got `{value}`"
+            )
+            raise SystemExit(1)
+        elif value:
+            return value
+        else:
+            return None

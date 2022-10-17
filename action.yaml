@@ -32,6 +32,10 @@ inputs:
     description: 'Skip Pull Request creation'
     required: false
     default: 'false'
+  update_version_with:
+    description: 'Use Latest Release Tag/Commit SHA or Default Branch Commit SHA to update. options: "release-tag" (default), "release-commit-sha", "default-branch-sha"'
+    required: false
+    default: 'release-tag'
 runs:
   using: 'docker'
   image: 'Dockerfile'
