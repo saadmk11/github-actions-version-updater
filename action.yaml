@@ -33,7 +33,7 @@ inputs:
     required: false
     default: 'false'
   update_version_with:
-    description: 'Version Type to use. options: "release-tag" (default), "release-commit-sha", "default-branch-sha"'
+    description: 'Use Latest Release Tag/Commit SHA or Default Branch Commit SHA to update. options: "release-tag" (default), "release-commit-sha", "default-branch-sha"'
     required: false
     default: 'release-tag'
 runs:
