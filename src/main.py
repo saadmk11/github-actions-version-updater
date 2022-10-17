@@ -186,7 +186,7 @@ class GitHubActionsVersionUpdater:
 
     def _get_latest_version_release(self, action_repository: str) -> dict[str, str]:
         """Get the latest release using GitHub API"""
-        url = f"{self.github_api_url}/repos/{action_repository}/releases"
+        url = f"{self.github_api_url}/repos/{action_repository}/releases?per_page=50"
 
         response = requests.get(
             url, headers=get_request_headers(self.user_config.github_token)
