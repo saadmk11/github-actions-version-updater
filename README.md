@@ -6,7 +6,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/saadmk11/github-actions-version-updater?color=success&style=flat-square)](https://github.com/saadmk11/github-actions-version-updater/stargazers)
 ![GitHub Workflow Status](https://img.shields.io/github/workflow/status/saadmk11/github-actions-version-updater/Changelog%20CI?label=Changelog%20CI&style=flat-square)
 
-**GitHub Actions Version Updater** is GitHub Action that is used to **Update All GitHub Actions** in a Repository
+**GitHub Actions Version Updater** is a GitHub Action that is used to **Update All GitHub Actions** in a Repository
 and create a **pull request** with the updates (if enabled).
 It is an automated dependency updater similar to GitHub's **Dependabot** but for GitHub Actions.
 
@@ -16,11 +16,19 @@ It is an automated dependency updater similar to GitHub's **Dependabot** but for
   in a repository and **checks for updates** for each of the action used in those workflows.
 
 * If an update is found and if that action is **not ignored** then the workflows are updated
-  with the **latest release** of the action being used.
+  with the **new version** of the action being used.
 
 * If at least one workflow file is updated then a new branch is created with the changes and pushed to GitHub. (If enabled)
 
 * Finally, a pull request is created with the newly created branch. (If enabled)
+
+### Supported Version Fetch Sources:
+
+- **`release-tag`** (default): Uses **specific version tag** from **the latest release** to update a GitHub Action. (e.g. `actions/checkout@v1.2.3`)
+- **`release-commit-sha`**: Uses **the latest release** tag **commit SHA** to update a GitHub Action. (e.g. `actions/checkout@c18e2a1b1a95d0c5c63af210857e8718a479f56f`)
+- **`default-branch-sha`**: Uses **default branch** (e.g: `main`, `master`) **latest commit SHA** to update a GitHub Action. (e.g. `actions/checkout@c18e2a1b1a95d0c5c63af210857e8718a479f56f`)
+
+You can use `update_version_with` input option to select one of them. (e.g. `update_version_with: 'default-branch-sha'`)
 
 ### Usage:
 
@@ -54,25 +62,30 @@ jobs:
       - name: Run GitHub Actions Version Updater
         uses: saadmk11/github-actions-version-updater@v0.5.6
         with:
-          # Optional, This will be used to configure git
+          # [Required] Access token with `workflow` scope.
+          token: ${{ secrets.WORKFLOW_SECRET }}
+          # [Optional] This will be used to configure git
           # defaults to `github-actions[bot]` if not provided
           committer_username: 'test'
           committer_email: 'test@test.com'
-          # Optional, allows customizing the commit message and pull request title
-          # Both default to 'Update GitHub Action Versions'
+          # [Optional] Allows customizing the commit message
+          # defaults to 'Update GitHub Action Versions'
           commit_message: 'Commit Message'
+          # [Optional] Allows customizing the pull request title
+          # defaults to 'Update GitHub Action Versions'
           pull_request_title: 'Pull Request Title'
-          # Access token with `workflow` scope is required
-          token: ${{ secrets.WORKFLOW_SECRET }}
-          # Do not update these actions (Optional)
+          # [Optional] Do not update actions specified in this input
           # You need to add JSON array inside a string. e.g: '["actions/checkout@v2", "actions/cache@v2"]'
           # Or, add comma separated values. e.g: 'actions/checkout@v2, actions/cache@v2'
           ignore: 'actions/checkout@v2, actions/cache@v2'
-          # Optional, if set to 'true', the action will only check for updates and
+          # [Optional] If set to 'true', the action will only check for updates and
           # exit with a non-zero exit code if an update is found and update the build summary with the diff
           # otherwise it will create a pull request with the changes
-          # defaults to 'false'
-          skip_pull_request: 'true'
+          # options: 'false' (default), 'true'
+          skip_pull_request: 'false'
+          # [Optional] Use The Latest Release Tag/Commit SHA or Default Branch Commit SHA to update the actions
+          # options: "release-tag" (default), "release-commit-sha", "default-branch-sha"'
+          update_version_with: 'release-tag'
 ```
 
 ### Important Note:
