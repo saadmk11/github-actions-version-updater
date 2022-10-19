@@ -65,10 +65,10 @@ def add_pull_request_reviewers(
         payload = {}
 
         if pull_request_user_reviewers:
-            payload["reviewers"] = pull_request_user_reviewers
+            payload["reviewers"] = list(pull_request_user_reviewers)
 
         if pull_request_team_reviewers:
-            payload["team_reviewers"] = pull_request_team_reviewers
+            payload["team_reviewers"] = list(pull_request_team_reviewers)
 
         if not payload:
             gha_utils.echo("No reviewers were requested.")
