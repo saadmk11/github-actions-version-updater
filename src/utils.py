@@ -48,7 +48,7 @@ def create_pull_request(
 
         gha_utils.error(
             f"Could not create a pull request on "
-            f"{repository_name}, status code: {response.status_code}"
+            f"{repository_name}, GitHub API Response: {response.json()}"
         )
         raise SystemExit(1)
 
@@ -56,8 +56,8 @@ def create_pull_request(
 def add_pull_request_reviewers(
     repository_name: str,
     pull_request_number: int,
-    pull_request_user_reviewers: set[str] | None = None,
-    pull_request_team_reviewers: set[str] | None = None,
+    pull_request_user_reviewers: set[str],
+    pull_request_team_reviewers: set[str],
     github_token: str | None = None,
 ) -> None:
     """Request reviewers for a pull request on GitHub"""
@@ -85,16 +85,16 @@ def add_pull_request_reviewers(
 
         if response.status_code == 201:
             gha_utils.notice(
-                f"Requested review from {pull_request_user_reviewers}, "
-                f"{pull_request_team_reviewers} \U0001F389"
+                "Requested review from "
+                f"{pull_request_user_reviewers.union(pull_request_team_reviewers)} "
+                "\U0001F389"
             )
             return
 
         gha_utils.error(
             f"Could not request reviews on pull request #{pull_request_number} "
-            f"on {repository_name}, status code: {response.status_code}"
+            f"on {repository_name}, GitHub API Response: {response.json()}"
         )
-        gha_utils.error(response.json())
 
 
 def add_git_diff_to_job_summary() -> None:
