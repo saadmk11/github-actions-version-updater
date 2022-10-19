@@ -85,10 +85,10 @@ jobs:
           # [Optional] Use The Latest Release Tag/Commit SHA or Default Branch Commit SHA to update the actions
           # options: "release-tag" (default), "release-commit-sha", "default-branch-sha"'
           update_version_with: 'release-tag'
-          # [Optional] A comma separated string which denotes the users (usernames)
+          # [Optional] A comma separated string (usernames) which denotes the users
           # that should be added as reviewers to the pull request
           pull_request_user_reviewers: "octocat, hubot, other_user"
-          # [Optional] A comma separated string which denotes the teams (team slugs)
+          # [Optional] A comma separated string (team slugs) which denotes the teams
           # that should be added as reviewers to the pull request
           pull_request_team_reviewers: "justice-league, other_team"
 ```
