@@ -217,7 +217,7 @@ class GitHubActionsVersionUpdater:
 
         gha_utils.warning(
             f"Could not find any release for "
-            f'"{action_repository}", status code: {response.status_code}'
+            f'"{action_repository}", GitHub API Response: {response.json()}'
         )
         return {}
 
@@ -245,7 +245,7 @@ class GitHubActionsVersionUpdater:
 
         gha_utils.warning(
             f"Could not find commit data for tag/branch {tag_or_branch_name} on "
-            f'"{action_repository}", status code: {response.status_code}'
+            f'"{action_repository}", GitHub API Response: {response.json()}'
         )
         return {}
 
@@ -262,7 +262,7 @@ class GitHubActionsVersionUpdater:
 
         gha_utils.warning(
             f"Could not find default branch for "
-            f'"{action_repository}", status code: {response.status_code}'
+            f'"{action_repository}", GitHub API Response: {response.json()}'
         )
         return None
 
@@ -331,7 +331,7 @@ class GitHubActionsVersionUpdater:
 
         gha_utils.error(
             f"An error occurred while getting workflows for"
-            f"{self.env.repository}, status code: {response.status_code}"
+            f"{self.env.repository}, GitHub API Response: {response.json()}"
         )
         raise SystemExit(1)
 
