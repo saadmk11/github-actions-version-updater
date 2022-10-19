@@ -75,8 +75,8 @@ def add_pull_request_reviewers(
             return
 
         url = (
-            f"https://api.github.com/repos/{repository_name}"
-            f"/pulls/{pull_request_number}/requested_reviewers"
+            f"https://api.github.com/repos/{repository_name}/pulls"
+            f"/{pull_request_number}/requested_reviewers"
         )
 
         response = requests.post(
@@ -94,6 +94,7 @@ def add_pull_request_reviewers(
             f"Could not request reviews on pull request #{pull_request_number} "
             f"on {repository_name}, status code: {response.status_code}"
         )
+        gha_utils.error(response.json())
 
 
 def add_git_diff_to_job_summary() -> None:
