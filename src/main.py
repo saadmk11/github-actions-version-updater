@@ -24,6 +24,7 @@ from .run_git import (
 )
 from .utils import (
     add_git_diff_to_job_summary,
+    add_pull_request_reviewers,
     create_pull_request,
     display_whats_new,
     get_request_headers,
@@ -139,12 +140,19 @@ class GitHubActionsVersionUpdater:
                     self.user_config.git_commit_author,
                     new_branch_name,
                 )
-                create_pull_request(
+                pull_request_number = create_pull_request(
                     self.user_config.pull_request_title,
                     self.env.repository,
                     self.env.base_branch,
                     new_branch_name,
                     pull_request_body,
+                    self.user_config.github_token,
+                )
+                add_pull_request_reviewers(
+                    self.env.repository,
+                    pull_request_number,
+                    self.user_config.pull_request_user_reviewers,
+                    self.user_config.pull_request_team_reviewers,
                     self.user_config.github_token,
                 )
             else:
@@ -209,7 +217,7 @@ class GitHubActionsVersionUpdater:
 
         gha_utils.warning(
             f"Could not find any release for "
-            f'"{action_repository}", status code: {response.status_code}'
+            f'"{action_repository}", GitHub API Response: {response.json()}'
         )
         return {}
 
@@ -237,7 +245,7 @@ class GitHubActionsVersionUpdater:
 
         gha_utils.warning(
             f"Could not find commit data for tag/branch {tag_or_branch_name} on "
-            f'"{action_repository}", status code: {response.status_code}'
+            f'"{action_repository}", GitHub API Response: {response.json()}'
         )
         return {}
 
@@ -254,7 +262,7 @@ class GitHubActionsVersionUpdater:
 
         gha_utils.warning(
             f"Could not find default branch for "
-            f'"{action_repository}", status code: {response.status_code}'
+            f'"{action_repository}", GitHub API Response: {response.json()}'
         )
         return None
 
@@ -323,7 +331,7 @@ class GitHubActionsVersionUpdater:
 
         gha_utils.error(
             f"An error occurred while getting workflows for"
-            f"{self.env.repository}, status code: {response.status_code}"
+            f"{self.env.repository}, GitHub API Response: {response.json()}"
         )
         raise SystemExit(1)
 

@@ -36,6 +36,14 @@ inputs:
     description: 'Use Latest Release Tag/Commit SHA or Default Branch Commit SHA to update. options: "release-tag" (default), "release-commit-sha", "default-branch-sha"'
     required: false
     default: 'release-tag'
+  pull_request_user_reviewers:
+    description: 'A comma separated string (usernames) which denotes the users that should be added as reviewers to the pull request'
+    required: false
+    default: ''
+  pull_request_team_reviewers:
+    description: 'A comma separated string (team slugs) which denotes the teams that should be added as reviewers to the pull request'
+    required: false
+    default: ''
 runs:
   using: 'docker'
   image: 'Dockerfile'

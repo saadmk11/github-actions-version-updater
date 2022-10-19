@@ -40,6 +40,8 @@ class Configuration(NamedTuple):
     commit_message: str = "Update GitHub Action Versions"
     ignore_actions: set[str] = set()
     update_version_with: str = LATEST_RELEASE_TAG
+    pull_request_user_reviewers: set[str] = set()
+    pull_request_team_reviewers: set[str] = set()
 
     @property
     def git_commit_author(self) -> str:
@@ -70,6 +72,8 @@ class Configuration(NamedTuple):
             "commit_message": env.get("INPUT_COMMIT_MESSAGE"),
             "ignore_actions": env.get("INPUT_IGNORE"),
             "update_version_with": env.get("INPUT_UPDATE_VERSION_WITH"),
+            "pull_request_user_reviewers": env.get("INPUT_PULL_REQUEST_USER_REVIEWERS"),
+            "pull_request_team_reviewers": env.get("INPUT_PULL_REQUEST_TEAM_REVIEWERS"),
         }
         return user_config
 
@@ -102,9 +106,21 @@ class Configuration(NamedTuple):
                 )
                 raise SystemExit(1)
         elif value and isinstance(value, str):
-            return {s.strip() for s in value.split(",")}
+            return {s.strip() for s in value.strip().split(",") if s}
         else:
             return None
+
+    @staticmethod
+    def clean_pull_request_user_reviewers(value: Any) -> set[str] | None:
+        if value and isinstance(value, str):
+            return {s.strip() for s in value.strip().split(",") if s}
+        return None
+
+    @staticmethod
+    def clean_pull_request_team_reviewers(value: Any) -> set[str] | None:
+        if value and isinstance(value, str):
+            return {s.strip() for s in value.strip().split(",") if s}
+        return None
 
     @staticmethod
     def clean_skip_pull_request(value: Any) -> bool | None:
