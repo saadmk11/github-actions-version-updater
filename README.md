@@ -74,9 +74,8 @@ jobs:
           # [Optional] Allows customizing the pull request title
           # defaults to 'Update GitHub Action Versions'
           pull_request_title: 'Pull Request Title'
-          # [Optional] Do not update actions specified in this input
-          # You need to add JSON array inside a string. e.g: '["actions/checkout@v2", "actions/cache@v2"]'
-          # Or, add comma separated values. e.g: 'actions/checkout@v2, actions/cache@v2'
+          # [Optional] A comma separated string of GitHub Actions to ignore updates for.
+          # e.g: 'actions/checkout@v2, actions/cache@v2'
           ignore: 'actions/checkout@v2, actions/cache@v2'
           # [Optional] If set to 'true', the action will only check for updates and
           # exit with a non-zero exit code if an update is found and update the build summary with the diff
@@ -86,6 +85,12 @@ jobs:
           # [Optional] Use The Latest Release Tag/Commit SHA or Default Branch Commit SHA to update the actions
           # options: "release-tag" (default), "release-commit-sha", "default-branch-sha"'
           update_version_with: 'release-tag'
+          # [Optional] A comma separated string which denotes the users (usernames)
+          # that should be added as reviewers to the pull request
+          pull_request_user_reviewers: "octocat, hubot, other_user"
+          # [Optional] A comma separated string which denotes the teams (team slugs)
+          # that should be added as reviewers to the pull request
+          pull_request_team_reviewers: "justice-league, other_team"
 ```
 
 ### Important Note:

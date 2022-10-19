@@ -24,7 +24,7 @@ def create_pull_request(
     head_branch_name: str,
     body: str,
     github_token: str | None = None,
-) -> None:
+) -> int:
     """Create pull request on GitHub"""
     with gha_utils.group("Create Pull Request"):
         url = f"https://api.github.com/repos/{repository_name}/pulls"
@@ -40,14 +40,60 @@ def create_pull_request(
         )
 
         if response.status_code == 201:
-            html_url = response.json()["html_url"]
-            gha_utils.notice(f"Pull request opened at {html_url} \U0001F389")
-        else:
-            gha_utils.error(
-                f"Could not create a pull request on "
-                f"{repository_name}, status code: {response.status_code}"
+            response_data = response.json()
+            gha_utils.notice(
+                f"Pull request opened at {response_data['html_url']} \U0001F389"
             )
-            raise SystemExit(1)
+            return response_data["number"]
+
+        gha_utils.error(
+            f"Could not create a pull request on "
+            f"{repository_name}, status code: {response.status_code}"
+        )
+        raise SystemExit(1)
+
+
+def add_pull_request_reviewers(
+    repository_name: str,
+    pull_request_number: int,
+    pull_request_user_reviewers: set[str] | None = None,
+    pull_request_team_reviewers: set[str] | None = None,
+    github_token: str | None = None,
+) -> None:
+    """Request reviewers for a pull request on GitHub"""
+    with gha_utils.group(f"Request Reviewers for Pull Request #{pull_request_number}"):
+        payload = {}
+
+        if pull_request_user_reviewers:
+            payload["reviewers"] = pull_request_user_reviewers
+
+        if pull_request_team_reviewers:
+            payload["team_reviewers"] = pull_request_team_reviewers
+
+        if not payload:
+            gha_utils.echo("No reviewers were requested.")
+            return
+
+        url = (
+            f"https://api.github.com/repos/{repository_name}"
+            f"/pulls/{pull_request_number}/requested_reviewers"
+        )
+
+        response = requests.post(
+            url, json=payload, headers=get_request_headers(github_token)
+        )
+
+        if response.status_code == 201:
+            gha_utils.notice(
+                f"Requested review from {pull_request_user_reviewers}, "
+                f"{pull_request_team_reviewers} \U0001F389"
+            )
+            return
+
+        gha_utils.error(
+            f"Could not request reviews on pull request #{pull_request_number} "
+            f"on {repository_name}, status code: {response.status_code}"
+        )
 
 
 def add_git_diff_to_job_summary() -> None:
