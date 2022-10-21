@@ -58,15 +58,14 @@ class GitHubActionsVersionUpdater:
             )
             raise SystemExit(0)
 
-        ignore_actions = self.user_config.ignore_actions
-
-        if ignore_actions:
-            gha_utils.echo(f'Actions "{ignore_actions}" will be skipped')
+        if self.user_config.ignore_actions:
+            gha_utils.echo(
+                f'Actions "{self.user_config.ignore_actions}" will be skipped'
+            )
 
         for workflow_path in workflow_paths:
-            pull_request_body_lines.union(
-                self._update_workflow(workflow_path, ignore_actions)
-            )
+            pull_request_body_lines.union(self._update_workflow(workflow_path))
+        print(pull_request_body_lines)
 
         if git_has_changes():
             # Use timestamp to ensure uniqueness of the new branch
@@ -108,9 +107,7 @@ class GitHubActionsVersionUpdater:
         else:
             gha_utils.notice("Everything is up-to-date! \U0001F389 \U0001F389")
 
-    def _update_workflow(
-        self, workflow_path: str, ignore_actions: set[str]
-    ) -> set[str]:
+    def _update_workflow(self, workflow_path: str) -> set[str]:
         """Update the workflow file with the updated data"""
         pull_request_body_lines: set[str] = set()
         workflow_updated = False
@@ -128,11 +125,12 @@ class GitHubActionsVersionUpdater:
                     f"Error while parsing YAML from '{workflow_path}' file. "
                     f"Reason: {exc}"
                 )
+                print(pull_request_body_lines)
                 return pull_request_body_lines
 
             all_actions = set(self._get_all_actions(workflow_data))
             # Remove ignored actions
-            all_actions.difference_update(ignore_actions)
+            all_actions.difference_update(self.user_config.ignore_actions)
 
             for action in all_actions:
                 try:
@@ -164,6 +162,7 @@ class GitHubActionsVersionUpdater:
                             action_repository, new_version_data
                         )
                     )
+                    print(pull_request_body_lines)
                     gha_utils.echo(f'Updating "{action}" with "{updated_action}"...')
                     updated_workflow_data = updated_workflow_data.replace(
                         action, updated_action
@@ -176,7 +175,7 @@ class GitHubActionsVersionUpdater:
                 file.seek(0)
                 file.write(updated_workflow_data)
                 file.truncate()
-
+        print(pull_request_body_lines)
         return pull_request_body_lines
 
     def _generate_pull_request_body_line(
