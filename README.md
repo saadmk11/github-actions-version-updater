@@ -85,6 +85,12 @@ jobs:
           # [Optional] Use The Latest Release Tag/Commit SHA or Default Branch Commit SHA to update the actions
           # options: "release-tag" (default), "release-commit-sha", "default-branch-sha"'
           update_version_with: 'release-tag'
+          # [Optional] A comma separated string of release types (major, minor, patch) to use when updating the actions
+          # If not specified, all releases will be used
+          # By default, all (major, minor, patch) release types are used to update the actions
+          # Only applicable for `release-tag` and `release-commit-sha` update_version_with options
+          # options: "all" (default), "major", "minor", "patch"
+          release_types: 'all'
           # [Optional] A comma separated string (usernames) which denotes the users
           # that should be added as reviewers to the pull request
           pull_request_user_reviewers: "octocat, hubot, other_user"
