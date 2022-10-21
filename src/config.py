@@ -136,7 +136,7 @@ class Configuration(NamedTuple):
             values = [s.strip() for s in value.lower().strip().split(",") if s]
             if values == ["all"]:
                 return ALL_RELEASE_TYPES
-            elif all(i in values for i in ALL_RELEASE_TYPES):
+            elif all(i in ALL_RELEASE_TYPES for i in values):
                 return values
             else:
                 gha_utils.error(
