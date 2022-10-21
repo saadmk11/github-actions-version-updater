@@ -64,9 +64,9 @@ class GitHubActionsVersionUpdater:
             )
 
         for workflow_path in workflow_paths:
-            updated_item_markdown_set.union(self._update_workflow(workflow_path))
-            print(updated_item_markdown_set)
-        print(updated_item_markdown_set)
+            updated_item_markdown_set = updated_item_markdown_set.union(
+                self._update_workflow(workflow_path)
+            )
 
         if git_has_changes():
             # Use timestamp to ensure uniqueness of the new branch
@@ -126,7 +126,6 @@ class GitHubActionsVersionUpdater:
                     f"Error while parsing YAML from '{workflow_path}' file. "
                     f"Reason: {exc}"
                 )
-                print(updated_item_markdown_set)
                 return updated_item_markdown_set
 
             all_actions = set(self._get_all_actions(workflow_data))
@@ -163,7 +162,6 @@ class GitHubActionsVersionUpdater:
                             action_repository, new_version_data
                         )
                     )
-                    print(updated_item_markdown_set)
                     gha_utils.echo(f'Updating "{action}" with "{updated_action}"...')
                     updated_workflow_data = updated_workflow_data.replace(
                         action, updated_action
@@ -176,7 +174,6 @@ class GitHubActionsVersionUpdater:
                 file.seek(0)
                 file.write(updated_workflow_data)
                 file.truncate()
-        print(updated_item_markdown_set)
         return updated_item_markdown_set
 
     def _generate_updated_item_markdown(
