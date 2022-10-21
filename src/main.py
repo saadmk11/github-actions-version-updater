@@ -8,11 +8,15 @@ from typing import Any
 import github_action_utils as gha_utils  # type: ignore
 import requests
 import yaml
-from pkg_resources import parse_version
+from packaging.version import LegacyVersion, Version, parse
 
 from .config import (
+    ALL_RELEASE_TYPES,
     LATEST_RELEASE_COMMIT_SHA,
     LATEST_RELEASE_TAG,
+    MAJOR_RELEASE,
+    MINOR_RELEASE,
+    PATCH_RELEASE,
     ActionEnvironment,
     Configuration,
 )
@@ -45,7 +49,7 @@ class GitHubActionsVersionUpdater:
     def run(self) -> None:
         """Entrypoint to the GitHub Action"""
         workflow_paths = self._get_workflow_paths()
-        pull_request_body_lines = set()
+        pull_request_body_lines: set[str] = set()
 
         if not workflow_paths:
             gha_utils.warning(
@@ -60,70 +64,9 @@ class GitHubActionsVersionUpdater:
             gha_utils.echo(f'Actions "{ignore_actions}" will be skipped')
 
         for workflow_path in workflow_paths:
-            workflow_updated = False
-
-            with open(workflow_path, "r+") as file, gha_utils.group(
-                f'Checking "{workflow_path}" for updates'
-            ):
-                file_data = file.read()
-                updated_workflow_data = file_data
-
-                try:
-                    workflow_data = yaml.load(file_data, Loader=yaml.FullLoader)
-                except yaml.YAMLError as exc:
-                    gha_utils.error(
-                        f"Error while parsing YAML from '{workflow_path}' file. "
-                        f"Reason: {exc}"
-                    )
-                    continue
-
-                all_actions = set(self._get_all_actions(workflow_data))
-                # Remove ignored actions
-                all_actions.difference_update(ignore_actions)
-
-                for action in all_actions:
-                    try:
-                        action_repository, current_version = action.split("@")
-                    except ValueError:
-                        gha_utils.warning(
-                            f'Action "{action}" is in a wrong format, '
-                            "We only support community actions currently"
-                        )
-                        continue
-
-                    new_version, new_version_data = self._get_new_version(
-                        action_repository
-                    )
-
-                    if not new_version:
-                        gha_utils.warning(
-                            f"Could not find any new version for {action}. Skipping..."
-                        )
-                        continue
-
-                    updated_action = f"{action_repository}@{new_version}"
-
-                    if action != updated_action:
-                        gha_utils.echo(f'Found new version for "{action_repository}"')
-                        pull_request_body_lines.add(
-                            self._generate_pull_request_body_line(
-                                action_repository, new_version_data
-                            )
-                        )
-                        gha_utils.echo(
-                            f'Updating "{action}" with "{updated_action}"...'
-                        )
-                        updated_workflow_data = updated_workflow_data.replace(
-                            action, updated_action
-                        )
-                        workflow_updated = True
-                    else:
-                        gha_utils.echo(f'No updates found for "{action_repository}"')
-
-                if workflow_updated:
-                    file.seek(0)
-                    file.write(updated_workflow_data)
-                    file.truncate()
+            pull_request_body_lines.union(
+                self._update_workflow(workflow_path, ignore_actions)
+            )
 
         if git_has_changes():
             # Use timestamp to ensure uniqueness of the new branch
@@ -165,6 +108,77 @@ class GitHubActionsVersionUpdater:
         else:
             gha_utils.notice("Everything is up-to-date! \U0001F389 \U0001F389")
 
+    def _update_workflow(
+        self, workflow_path: str, ignore_actions: set[str]
+    ) -> set[str]:
+        """Update the workflow file with the updated data"""
+        pull_request_body_lines: set[str] = set()
+        workflow_updated = False
+
+        with open(workflow_path, "r+") as file, gha_utils.group(
+            f'Checking "{workflow_path}" for updates'
+        ):
+            file_data = file.read()
+            updated_workflow_data = file_data
+
+            try:
+                workflow_data = yaml.load(file_data, Loader=yaml.FullLoader)
+            except yaml.YAMLError as exc:
+                gha_utils.error(
+                    f"Error while parsing YAML from '{workflow_path}' file. "
+                    f"Reason: {exc}"
+                )
+                return pull_request_body_lines
+
+            all_actions = set(self._get_all_actions(workflow_data))
+            # Remove ignored actions
+            all_actions.difference_update(ignore_actions)
+
+            for action in all_actions:
+                try:
+                    action_repository, current_version = action.split("@")
+                except ValueError:
+                    gha_utils.warning(
+                        f'Action "{action}" is in a wrong format, '
+                        "We only support community actions currently"
+                    )
+                    continue
+
+                new_version, new_version_data = self._get_new_version(
+                    action_repository,
+                    current_version,
+                )
+
+                if not new_version:
+                    gha_utils.warning(
+                        f"Could not find any new version for {action}. Skipping..."
+                    )
+                    continue
+
+                updated_action = f"{action_repository}@{new_version}"
+
+                if action != updated_action:
+                    gha_utils.echo(f'Found new version for "{action_repository}"')
+                    pull_request_body_lines.add(
+                        self._generate_pull_request_body_line(
+                            action_repository, new_version_data
+                        )
+                    )
+                    gha_utils.echo(f'Updating "{action}" with "{updated_action}"...')
+                    updated_workflow_data = updated_workflow_data.replace(
+                        action, updated_action
+                    )
+                    workflow_updated = True
+                else:
+                    gha_utils.echo(f'No updates found for "{action_repository}"')
+
+            if workflow_updated:
+                file.seek(0)
+                file.write(updated_workflow_data)
+                file.truncate()
+
+        return pull_request_body_lines
+
     def _generate_pull_request_body_line(
         self, action_repository: str, version_data: dict[str, str]
     ) -> str:
@@ -192,8 +206,8 @@ class GitHubActionsVersionUpdater:
                 f"branch on {version_data['commit_date']}\n"
             )
 
-    def _get_latest_version_release(self, action_repository: str) -> dict[str, str]:
-        """Get the latest release using GitHub API"""
+    def _get_github_releases(self, action_repository: str) -> list[dict[str, Any]]:
+        """Get the GitHub releases using GitHub API"""
         url = f"{self.github_api_url}/repos/{action_repository}/releases?per_page=50"
 
         response = requests.get(
@@ -204,21 +218,78 @@ class GitHubActionsVersionUpdater:
             response_data = response.json()
 
             if response_data:
-                # Sort through the releases (default 30 latest release) returned
-                # by GitHub API and find the latest version release
-                sorted_data = sorted(
-                    response_data, key=lambda r: parse_version(r["tag_name"])
-                )[-1]
-                return {
-                    "published_at": sorted_data["published_at"],
-                    "html_url": sorted_data["html_url"],
-                    "tag_name": sorted_data["tag_name"],
-                }
+                # Sort through the releases returned
+                # by GitHub API using tag_name
+                return sorted(
+                    filter(lambda r: not r["prerelease"], response_data),
+                    key=lambda r: parse(r["tag_name"]),
+                    reverse=True,
+                )
 
         gha_utils.warning(
             f"Could not find any release for "
             f'"{action_repository}", GitHub API Response: {response.json()}'
         )
+        return []
+
+    def _get_release_filter_function(self):
+        """Get the release filter function"""
+        if self.user_config.release_types == ALL_RELEASE_TYPES:
+            return lambda r, c: True
+
+        checks = []
+
+        if MAJOR_RELEASE in self.user_config.release_types:
+            checks.append(lambda r, c: parse(r["tag_name"]).major > c.major)
+
+        if MINOR_RELEASE in self.user_config.release_types:
+            checks.append(
+                lambda r, c: parse(r["tag_name"]).major == c.major
+                and parse(r["tag_name"]).minor > c.minor,
+            )
+
+        if PATCH_RELEASE in self.user_config.release_types:
+            checks.append(
+                lambda r, c: parse(r["tag_name"]).major == c.major
+                and parse(r["tag_name"]).minor == c.minor
+                and parse(r["tag_name"]).micro > c.micro
+            )
+
+        def filter_func(release_tag: str, current_version: Version) -> bool:
+            return any(check(release_tag, current_version) for check in checks)
+
+        return filter_func
+
+    def _get_latest_version_release(
+        self, action_repository: str, current_version: str
+    ) -> dict[str, str]:
+        """Get the latest release"""
+        github_releases = self._get_github_releases(action_repository)
+
+        if not github_releases:
+            return {}
+
+        parsed_current_version: LegacyVersion | Version = parse(current_version)
+        latest_release: dict[str, Any]
+
+        if isinstance(parsed_current_version, LegacyVersion):
+            latest_release = github_releases[0]
+        else:
+            filter_func = self._get_release_filter_function()
+            latest_release = next(
+                filter(
+                    lambda r: filter_func(r, parsed_current_version),
+                    github_releases,
+                ),
+                {},
+            )
+
+        if latest_release:
+            return {
+                "published_at": latest_release["published_at"],
+                "html_url": latest_release["html_url"],
+                "tag_name": latest_release["tag_name"],
+            }
         return {}
 
     def _get_commit_data(
@@ -269,17 +340,21 @@ class GitHubActionsVersionUpdater:
     # flake8: noqa: B019
     @cache
     def _get_new_version(
-        self, action_repository: str
+        self, action_repository: str, current_version: str
     ) -> tuple[str | None, dict[str, str]]:
         """Get the new version for the action"""
         gha_utils.echo(f'Checking "{action_repository}" for updates...')
 
         if self.user_config.update_version_with == LATEST_RELEASE_TAG:
-            latest_release_data = self._get_latest_version_release(action_repository)
+            latest_release_data = self._get_latest_version_release(
+                action_repository, current_version
+            )
             return latest_release_data.get("tag_name"), latest_release_data
 
         elif self.user_config.update_version_with == LATEST_RELEASE_COMMIT_SHA:
-            latest_release_data = self._get_latest_version_release(action_repository)
+            latest_release_data = self._get_latest_version_release(
+                action_repository, current_version
+            )
 
             if not latest_release_data:
                 return None, {}
