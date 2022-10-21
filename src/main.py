@@ -49,7 +49,7 @@ class GitHubActionsVersionUpdater:
     def run(self) -> None:
         """Entrypoint to the GitHub Action"""
         workflow_paths = self._get_workflow_paths()
-        pull_request_body_lines: set[str] = set()
+        updated_item_markdown_set: set[str] = set()
 
         if not workflow_paths:
             gha_utils.warning(
@@ -64,13 +64,14 @@ class GitHubActionsVersionUpdater:
             )
 
         for workflow_path in workflow_paths:
-            pull_request_body_lines.union(self._update_workflow(workflow_path))
-        print(pull_request_body_lines)
+            updated_item_markdown_set.union(self._update_workflow(workflow_path))
+            print(updated_item_markdown_set)
+        print(updated_item_markdown_set)
 
         if git_has_changes():
             # Use timestamp to ensure uniqueness of the new branch
             pull_request_body = "### GitHub Actions Version Updates\n" + "".join(
-                pull_request_body_lines
+                updated_item_markdown_set
             )
             gha_utils.append_job_summary(pull_request_body)
 
@@ -109,7 +110,7 @@ class GitHubActionsVersionUpdater:
 
     def _update_workflow(self, workflow_path: str) -> set[str]:
         """Update the workflow file with the updated data"""
-        pull_request_body_lines: set[str] = set()
+        updated_item_markdown_set: set[str] = set()
         workflow_updated = False
 
         with open(workflow_path, "r+") as file, gha_utils.group(
@@ -125,8 +126,8 @@ class GitHubActionsVersionUpdater:
                     f"Error while parsing YAML from '{workflow_path}' file. "
                     f"Reason: {exc}"
                 )
-                print(pull_request_body_lines)
-                return pull_request_body_lines
+                print(updated_item_markdown_set)
+                return updated_item_markdown_set
 
             all_actions = set(self._get_all_actions(workflow_data))
             # Remove ignored actions
@@ -157,12 +158,12 @@ class GitHubActionsVersionUpdater:
 
                 if action != updated_action:
                     gha_utils.echo(f'Found new version for "{action_repository}"')
-                    pull_request_body_lines.add(
-                        self._generate_pull_request_body_line(
+                    updated_item_markdown_set.add(
+                        self._generate_updated_item_markdown(
                             action_repository, new_version_data
                         )
                     )
-                    print(pull_request_body_lines)
+                    print(updated_item_markdown_set)
                     gha_utils.echo(f'Updating "{action}" with "{updated_action}"...')
                     updated_workflow_data = updated_workflow_data.replace(
                         action, updated_action
@@ -175,10 +176,10 @@ class GitHubActionsVersionUpdater:
                 file.seek(0)
                 file.write(updated_workflow_data)
                 file.truncate()
-        print(pull_request_body_lines)
-        return pull_request_body_lines
+        print(updated_item_markdown_set)
+        return updated_item_markdown_set
 
-    def _generate_pull_request_body_line(
+    def _generate_updated_item_markdown(
         self, action_repository: str, version_data: dict[str, str]
     ) -> str:
         """Generate pull request body line for pull request body"""
