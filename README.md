@@ -24,20 +24,20 @@ It is an automated dependency updater similar to GitHub's **Dependabot** but for
 
 ### Supported Version Fetch Sources
 
-- **`release-tag`** (default): Uses **specific version tag** from **the latest release** to update a GitHub Action. (e.g. `actions/checkout@v1.2.3`)
+- **`release-tag` (default):** Uses **specific release tag** from **the latest release** to update a GitHub Action. (e.g. `actions/checkout@v1.2.3`)
 
-- **`release-commit-sha`**: Uses **the latest release** tag **commit SHA** to update a GitHub Action. (e.g. `actions/checkout@c18e2a1b1a95d0c5c63af210857e8718a479f56f`)
+- **`release-commit-sha`:** Uses the **latest release tag commit SHA** to update a GitHub Action. (e.g. `actions/checkout@c18e2a1b1a95d0c5c63af210857e8718a479f56f`)
 
-- **`default-branch-sha`**: Uses **default branch** (e.g: `main`, `master`) **latest commit SHA** to update a GitHub Action. (e.g. `actions/checkout@c18e2a1b1a95d0c5c63af210857e8718a479f56f`)
+- **`default-branch-sha`:** Uses **default branch** (e.g: `main`, `master`) **latest commit SHA** to update a GitHub Action. (e.g. `actions/checkout@c18e2a1b1a95d0c5c63af210857e8718a479f56f`)
 
 You can use `update_version_with` input option to select one of them. (e.g. `update_version_with: 'default-branch-sha'`)
 
 ### Release Types
 
-- **`all`** (default): Actions with **any** new release type will be updated.
-- **`major`**: Actions with only new **major** release will be updated.
-- **`minor`**: Actions with only new **minor** release will be updated.
-- **`patch`**: Actions with only new **patch** release will be updated.
+- **`all` (default):** Actions with **any** new release will be updated.
+- **`major`:** Actions with only new **major** release will be updated.
+- **`minor`:** Actions with only new **minor** release will be updated.
+- **`patch`:** Actions with only new **patch** release will be updated.
 
 You can use `release_types` input option to select one/all of them. (e.g. `"major, minor"`)
 
@@ -47,7 +47,7 @@ We recommend running this action on a [`schedule`](https://docs.github.com/en/ac
 event or a [`workflow_dispatch`](https://docs.github.com/en/actions/reference/events-that-trigger-workflows#workflow_dispatch) event.
 
 To integrate `GitHub Actions Version Updater` on your repository, create a `YAML`  file
-inside `.github/workflows/` directory (`.github/workflows/updater.yaml`) add the following into the file:
+inside `.github/workflows/` directory (e.g: `.github/workflows/updater.yaml`) add the following lines into the file:
 
 ```yaml
 name: GitHub Actions Version Updater
@@ -65,7 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
-          # Access token with `workflow` scope is required
+          # [Required] Access token with `workflow` scope.
           token: ${{ secrets.WORKFLOW_SECRET }}
 
       - name: Run GitHub Actions Version Updater
@@ -79,19 +79,19 @@ jobs:
 
 These are the inputs that can be provided on the workflow.
 
-| Name                          | Required | Description                                                                                                                                                                                                                     | Default                                                                                 | Example                                                                                       |
-|-------------------------------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------|
-| `token`                       | Yes      | GitHub Access Token with `workflow` scope                                                                                                                                                                                       | `null`                                                                                  | `${{ secrets.WORKFLOW_SECRET }}` (`WORKFLOW_SECRET` needs to be added to the actions secrets) |
-| `committer_username`          | No       | Name of the user who will commit the changes to GitHub                                                                                                                                                                          | "github-actions[bot]"                                                                   | "Test User"                                                                                   |
-| `committer_email`             | No       | Email Address of the user who will commit the changes to GitHub                                                                                                                                                                 | "github-actions[bot]@users.noreply.github.com"                                          | "test@test.com"                                                                               |
-| `commit_message`              | No       | Commit message for the commits created by the action                                                                                                                                                                            | "Update GitHub Action Versions"                                                         | "Custom Commit Message"                                                                       |
-| `pull_request_title`          | No       | Title of the pull requests generated by the action                                                                                                                                                                              | "Update GitHub Action Versions"                                                         | "Custom PR Title"                                                                             |
-| `ignore`                      | No       | A comma separated string of GitHub Actions to ignore updates for                                                                                                                                                                | `null`                                                                                  | "actions/checkout@v2, actions/cache@v2"                                                       |
-| `skip_pull_request`           | No       | If **"true"**, the action will only check for updates and if any update is found the job will fail and update the build summary with the diff                                                                                   | "false" (**Options:** "true", "false")                                                  | "true"                                                                                        |
-| `update_version_with`         | No       | Use The Latest Release Tag/Commit SHA or Default Branch Commit SHA to update the actions                                                                                                                                        | "release-tag" (**options:** "release-tag", "release-commit-sha", "default-branch-sha"') | "release-commit-sha"                                                                          |
-| `release_types`               | No       | A comma separated string of release types (**major, minor, patch**) to use when updating the actions. By default, all release types are used to update the actions. Only Applicable for **"release-tag", "release-commit-sha"** | "all" (**Options:** "major", "minor", "patch" **[one or many seperated by comma]**)     | "minor, patch"                                                                                |
-| `pull_request_user_reviewers` | No       | A comma separated string (usernames) which denotes the users that should be added as reviewers to the pull request                                                                                                              | `null`                                                                                  | "octocat, hubot, other_user"                                                                  |
-| `pull_request_team_reviewers` | No       | A comma separated string (team slugs) which denotes the teams that should be added as reviewers to the pull request                                                                                                             | `null`                                                                                  | "justice-league, other_team"                                                                  |
+| Name                          | Required | Description                                                                                                                                                                                                                                                                         | Default                                        | Example                                 |
+|-------------------------------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------|-----------------------------------------|
+| `token`                       | Yes      | GitHub Access Token with `workflow` scope (The Token needs to be added to the actions secrets)                                                                                                                                                                                      | `null`                                         | `${{ secrets.WORKFLOW_SECRET }}`        |
+| `committer_username`          | No       | Name of the user who will commit the changes to GitHub                                                                                                                                                                                                                              | "github-actions[bot]"                          | "Test User"                             |
+| `committer_email`             | No       | Email Address of the user who will commit the changes to GitHub                                                                                                                                                                                                                     | "github-actions[bot]@users.noreply.github.com" | "test@test.com"                         |
+| `commit_message`              | No       | Commit message for the commits created by the action                                                                                                                                                                                                                                | "Update GitHub Action Versions"                | "Custom Commit Message"                 |
+| `pull_request_title`          | No       | Title of the pull requests generated by the action                                                                                                                                                                                                                                  | "Update GitHub Action Versions"                | "Custom PR Title"                       |
+| `ignore`                      | No       | A comma separated string of GitHub Actions to ignore updates for                                                                                                                                                                                                                    | `null`                                         | "actions/checkout@v2, actions/cache@v2" |
+| `skip_pull_request`           | No       | If **"true"**, the action will only check for updates and if any update is found the job will fail and update the build summary with the diff (**Options:** "true", "false")                                                                                                        | "false"                                        | "true"                                  |
+| `update_version_with`         | No       | Use The Latest Release Tag/Commit SHA or Default Branch Commit SHA to update the actions (**options:** "release-tag", "release-commit-sha", "default-branch-sha"')                                                                                                                  | "release-tag"                                  | "release-commit-sha"                    |
+| `release_types`               | No       | A comma separated string of release types to use when updating the actions. By default, all release types are used to update the actions. Only Applicable for **"release-tag", "release-commit-sha"** (**Options:** "major", "minor", "patch" **[one or many seperated by comma]**) | "all"                                          | "minor, patch"                          |
+| `pull_request_user_reviewers` | No       | A comma separated string (usernames) which denotes the users that should be added as reviewers to the pull request                                                                                                                                                                  | `null`                                         | "octocat, hubot, other_user"            |
+| `pull_request_team_reviewers` | No       | A comma separated string (team slugs) which denotes the teams that should be added as reviewers to the pull request                                                                                                                                                                 | `null`                                         | "justice-league, other_team"            |
 
 #### Workflow with all options
 
@@ -113,13 +113,13 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
-          # Access token with `workflow` scope is required
+          # [Required] Access token with `workflow` scope.
           token: ${{ secrets.WORKFLOW_SECRET }}
 
       - name: Run GitHub Actions Version Updater
         uses: saadmk11/github-actions-version-updater@v0.5.6
         with:
-          # Access token with `workflow` scope is required
+          # [Required] Access token with `workflow` scope.
           token: ${{ secrets.WORKFLOW_SECRET }}
           committer_username: 'Test'
           committer_email: 'test@test.com'
