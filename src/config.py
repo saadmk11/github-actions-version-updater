@@ -14,6 +14,12 @@ UPDATE_VERSION_WITH_LIST = [
     DEFAULT_BRANCH_COMMIT_SHA,
 ]
 
+MAJOR_RELEASE = "major"
+MINOR_RELEASE = "minor"
+PATCH_RELEASE = "patch"
+
+ALL_RELEASE_TYPES = [MAJOR_RELEASE, MINOR_RELEASE, PATCH_RELEASE]
+
 
 class ActionEnvironment(NamedTuple):
     repository: str
@@ -42,6 +48,7 @@ class Configuration(NamedTuple):
     update_version_with: str = LATEST_RELEASE_TAG
     pull_request_user_reviewers: set[str] = set()
     pull_request_team_reviewers: set[str] = set()
+    release_types: list[str] = ALL_RELEASE_TYPES
 
     @property
     def git_commit_author(self) -> str:
@@ -72,6 +79,7 @@ class Configuration(NamedTuple):
             "commit_message": env.get("INPUT_COMMIT_MESSAGE"),
             "ignore_actions": env.get("INPUT_IGNORE"),
             "update_version_with": env.get("INPUT_UPDATE_VERSION_WITH"),
+            "release_types": env.get("INPUT_RELEASE_TYPES"),
             "pull_request_user_reviewers": env.get("INPUT_PULL_REQUEST_USER_REVIEWERS"),
             "pull_request_team_reviewers": env.get("INPUT_PULL_REQUEST_TEAM_REVIEWERS"),
         }
@@ -120,6 +128,22 @@ class Configuration(NamedTuple):
     def clean_pull_request_team_reviewers(value: Any) -> set[str] | None:
         if value and isinstance(value, str):
             return {s.strip() for s in value.strip().split(",") if s}
+        return None
+
+    @staticmethod
+    def clean_release_types(value: Any) -> list[str] | None:
+        if value and isinstance(value, str):
+            values = [s.strip() for s in value.lower().strip().split(",") if s]
+            if values == ["all"]:
+                return ALL_RELEASE_TYPES
+            elif all(i in ALL_RELEASE_TYPES for i in values):
+                return values
+            else:
+                gha_utils.error(
+                    "Invalid input for `release_types` field, "
+                    f"expected one/all of {ALL_RELEASE_TYPES} but got `{value}`"
+                )
+                raise SystemExit(1)
         return None
 
     @staticmethod

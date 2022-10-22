@@ -36,6 +36,10 @@ inputs:
     description: 'Use Latest Release Tag/Commit SHA or Default Branch Commit SHA to update. options: "release-tag" (default), "release-commit-sha", "default-branch-sha"'
     required: false
     default: 'release-tag'
+  release_types:
+    description: 'A comma separated string of release types (major, minor, patch) to use when updating the actions. If not specified, all releases will be used. options: "all" (default), "major", "minor", "patch"'
+    required: false
+    default: 'all'
   pull_request_user_reviewers:
     description: 'A comma separated string (usernames) which denotes the users that should be added as reviewers to the pull request'
     required: false

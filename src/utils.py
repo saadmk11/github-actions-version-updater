@@ -1,4 +1,4 @@
-from functools import lru_cache
+from functools import cache
 
 import github_action_utils as gha_utils  # type: ignore
 import requests
@@ -6,7 +6,7 @@ import requests
 from .run_git import git_diff
 
 
-@lru_cache
+@cache
 def get_request_headers(github_token: str | None = None) -> dict[str, str]:
     """Get headers for GitHub API request"""
     headers = {"Accept": "application/vnd.github.v3+json"}
