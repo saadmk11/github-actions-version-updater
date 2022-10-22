@@ -2,7 +2,7 @@ import os
 import pprint
 import time
 from collections.abc import Generator
-from functools import cache
+from functools import cache, cached_property
 from typing import Any
 
 import github_action_utils as gha_utils  # type: ignore
@@ -227,9 +227,8 @@ class GitHubActionsVersionUpdater:
         )
         return []
 
-    # flake8: noqa: B019
-    @cache
-    def _get_release_filter_function(self):
+    @cached_property
+    def _release_filter_function(self):
         """Get the release filter function"""
         if self.user_config.release_types == ALL_RELEASE_TYPES:
             return lambda r, c: True
@@ -272,10 +271,9 @@ class GitHubActionsVersionUpdater:
         if isinstance(parsed_current_version, LegacyVersion):
             latest_release = github_releases[0]
         else:
-            filter_func = self._get_release_filter_function()
             latest_release = next(
                 filter(
-                    lambda r: filter_func(r, parsed_current_version),
+                    lambda r: self._release_filter_function(r, parsed_current_version),
                     github_releases,
                 ),
                 {},
