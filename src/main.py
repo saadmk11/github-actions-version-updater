@@ -111,7 +111,6 @@ class GitHubActionsVersionUpdater:
     def _update_workflow(self, workflow_path: str) -> set[str]:
         """Update the workflow file with the updated data"""
         updated_item_markdown_set: set[str] = set()
-        workflow_updated = False
 
         with open(workflow_path, "r+") as file, gha_utils.group(
             f'Checking "{workflow_path}" for updates'
@@ -166,11 +165,10 @@ class GitHubActionsVersionUpdater:
                     updated_workflow_data = updated_workflow_data.replace(
                         action, updated_action
                     )
-                    workflow_updated = True
                 else:
                     gha_utils.echo(f'No updates found for "{action_repository}"')
 
-            if workflow_updated:
+            if updated_item_markdown_set:
                 file.seek(0)
                 file.write(updated_workflow_data)
                 file.truncate()
@@ -229,6 +227,8 @@ class GitHubActionsVersionUpdater:
         )
         return []
 
+    # flake8: noqa: B019
+    @cache
     def _get_release_filter_function(self):
         """Get the release filter function"""
         if self.user_config.release_types == ALL_RELEASE_TYPES:
