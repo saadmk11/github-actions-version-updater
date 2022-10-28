@@ -112,66 +112,71 @@ class GitHubActionsVersionUpdater:
         """Update the workflow file with the updated data"""
         updated_item_markdown_set: set[str] = set()
 
-        with open(workflow_path, "r+") as file, gha_utils.group(
-            f'Checking "{workflow_path}" for updates'
-        ):
-            file_data = file.read()
-            updated_workflow_data = file_data
+        try:
+            with open(workflow_path, "r+") as file, gha_utils.group(
+                f'Checking "{workflow_path}" for updates'
+            ):
+                file_data = file.read()
+                updated_workflow_data = file_data
 
-            try:
-                workflow_data = yaml.load(file_data, Loader=yaml.FullLoader)
-            except yaml.YAMLError as exc:
-                gha_utils.error(
-                    f"Error while parsing YAML from '{workflow_path}' file. "
-                    f"Reason: {exc}"
-                )
-                return updated_item_markdown_set
-
-            all_actions = set(self._get_all_actions(workflow_data))
-            # Remove ignored actions
-            all_actions.difference_update(self.user_config.ignore_actions)
-
-            for action in all_actions:
                 try:
-                    action_repository, current_version = action.split("@")
-                except ValueError:
-                    gha_utils.warning(
-                        f'Action "{action}" is in a wrong format, '
-                        "We only support community actions currently"
+                    workflow_data = yaml.load(file_data, Loader=yaml.FullLoader)
+                except yaml.YAMLError as exc:
+                    gha_utils.error(
+                        f"Error while parsing YAML from '{workflow_path}' file. "
+                        f"Reason: {exc}"
                     )
-                    continue
+                    return updated_item_markdown_set
 
-                new_version, new_version_data = self._get_new_version(
-                    action_repository,
-                    current_version,
-                )
+                all_actions = set(self._get_all_actions(workflow_data))
+                # Remove ignored actions
+                all_actions.difference_update(self.user_config.ignore_actions)
 
-                if not new_version:
-                    gha_utils.warning(
-                        f"Could not find any new version for {action}. Skipping..."
-                    )
-                    continue
-
-                updated_action = f"{action_repository}@{new_version}"
-
-                if action != updated_action:
-                    gha_utils.echo(f'Found new version for "{action_repository}"')
-                    updated_item_markdown_set.add(
-                        self._generate_updated_item_markdown(
-                            action_repository, new_version_data
+                for action in all_actions:
+                    try:
+                        action_repository, current_version = action.split("@")
+                    except ValueError:
+                        gha_utils.warning(
+                            f'Action "{action}" is in a wrong format, '
+                            "We only support community actions currently"
                         )
-                    )
-                    gha_utils.echo(f'Updating "{action}" with "{updated_action}"...')
-                    updated_workflow_data = updated_workflow_data.replace(
-                        action, updated_action
-                    )
-                else:
-                    gha_utils.echo(f'No updates found for "{action_repository}"')
+                        continue
 
-            if updated_item_markdown_set:
-                file.seek(0)
-                file.write(updated_workflow_data)
-                file.truncate()
+                    new_version, new_version_data = self._get_new_version(
+                        action_repository,
+                        current_version,
+                    )
+
+                    if not new_version:
+                        gha_utils.warning(
+                            f"Could not find any new version for {action}. Skipping..."
+                        )
+                        continue
+
+                    updated_action = f"{action_repository}@{new_version}"
+
+                    if action != updated_action:
+                        gha_utils.echo(f'Found new version for "{action_repository}"')
+                        updated_item_markdown_set.add(
+                            self._generate_updated_item_markdown(
+                                action_repository, new_version_data
+                            )
+                        )
+                        gha_utils.echo(
+                            f'Updating "{action}" with "{updated_action}"...'
+                        )
+                        updated_workflow_data = updated_workflow_data.replace(
+                            action, updated_action
+                        )
+                    else:
+                        gha_utils.echo(f'No updates found for "{action_repository}"')
+
+                if updated_item_markdown_set:
+                    file.seek(0)
+                    file.write(updated_workflow_data)
+                    file.truncate()
+        except FileNotFoundError:
+            gha_utils.warning(f"Workflow file '{workflow_path}' not found")
         return updated_item_markdown_set
 
     def _generate_updated_item_markdown(
