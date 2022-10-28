@@ -176,7 +176,7 @@ class GitHubActionsVersionUpdater:
                     file.write(updated_workflow_data)
                     file.truncate()
         except FileNotFoundError:
-            gha_utils.warning(f"Workflow file at '{workflow_path}' not found")
+            gha_utils.warning(f"Workflow file '{workflow_path}' not found")
         return updated_item_markdown_set
 
     def _generate_updated_item_markdown(
