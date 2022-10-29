@@ -69,7 +69,7 @@ jobs:
           token: ${{ secrets.WORKFLOW_SECRET }}
 
       - name: Run GitHub Actions Version Updater
-        uses: saadmk11/github-actions-version-updater@v0.7.0
+        uses: saadmk11/github-actions-version-updater@v0.7.1
         with:
           # [Required] Access token with `workflow` scope.
           token: ${{ secrets.WORKFLOW_SECRET }}
@@ -118,7 +118,7 @@ jobs:
           token: ${{ secrets.WORKFLOW_SECRET }}
 
       - name: Run GitHub Actions Version Updater
-        uses: saadmk11/github-actions-version-updater@v0.7.0
+        uses: saadmk11/github-actions-version-updater@v0.7.1
         with:
           # [Required] Access token with `workflow` scope.
           token: ${{ secrets.WORKFLOW_SECRET }}
