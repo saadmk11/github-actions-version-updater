@@ -393,7 +393,7 @@ class GitHubActionsVersionUpdater:
                 **branch_commit_data,
             }
 
-    def _get_workflow_paths(self) -> list[str]:
+    def _get_workflow_paths_from_api(self) -> set[str]:
         """Get all workflows of the repository using GitHub API"""
         url = f"{self.github_api_url}/repos/{self.env.repository}/actions/workflows"
 
@@ -402,13 +402,23 @@ class GitHubActionsVersionUpdater:
         )
 
         if response.status_code == 200:
-            return [workflow["path"] for workflow in response.json()["workflows"]]
+            return {workflow["path"] for workflow in response.json()["workflows"]}
 
         gha_utils.error(
             f"An error occurred while getting workflows for"
             f"{self.env.repository}, GitHub API Response: {response.json()}"
         )
-        raise SystemExit(1)
+        return set()
+
+    def _get_workflow_paths(self) -> set[str]:
+        """Get all workflows of the repository"""
+        workflow_paths = self._get_workflow_paths_from_api()
+        workflow_paths.update(self.user_config.extra_workflow_paths)
+
+        if not workflow_paths:
+            raise SystemExit(1)
+
+        return workflow_paths
 
     def _get_all_actions(self, data: Any) -> Generator[str, None, None]:
         """Recursively get all action names from workflow data"""
