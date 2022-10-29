@@ -1,3 +1,12 @@
+# Version: v0.7.1
+
+* [#32](https://github.com/saadmk11/github-actions-version-updater/pull/32): ci: update checkout version
+* [#33](https://github.com/saadmk11/github-actions-version-updater/pull/33): Handle Workflow File Not Found Error
+* [#34](https://github.com/saadmk11/github-actions-version-updater/pull/34): Add Option to Specify Custom Workflow File/Directory Paths
+* [#35](https://github.com/saadmk11/github-actions-version-updater/pull/35): Add GitHub Actions Version Updater
+* [#36](https://github.com/saadmk11/github-actions-version-updater/pull/36): Update GitHub Action Versions
+
+
 # Version: v0.7.0
 
 * [#12](https://github.com/saadmk11/github-actions-version-updater/pull/12): Allow custom commit message and pull request title
