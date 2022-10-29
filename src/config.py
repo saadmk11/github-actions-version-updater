@@ -1,5 +1,7 @@
 import json
+import os
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import github_action_utils as gha_utils  # type: ignore
@@ -49,6 +51,7 @@ class Configuration(NamedTuple):
     pull_request_user_reviewers: set[str] = set()
     pull_request_team_reviewers: set[str] = set()
     release_types: list[str] = ALL_RELEASE_TYPES
+    extra_workflow_paths: set[str] = set()
 
     @property
     def git_commit_author(self) -> str:
@@ -82,6 +85,7 @@ class Configuration(NamedTuple):
             "release_types": env.get("INPUT_RELEASE_TYPES"),
             "pull_request_user_reviewers": env.get("INPUT_PULL_REQUEST_USER_REVIEWERS"),
             "pull_request_team_reviewers": env.get("INPUT_PULL_REQUEST_TEAM_REVIEWERS"),
+            "extra_workflow_paths": env.get("INPUT_EXTRA_WORKFLOW_LOCATIONS"),
         }
         return user_config
 
@@ -164,3 +168,29 @@ class Configuration(NamedTuple):
             return value
         else:
             return None
+
+    @staticmethod
+    def clean_extra_workflow_paths(value: Any) -> set[str] | None:
+        if not value or not isinstance(value, str):
+            return None
+
+        workflow_locations = {s.strip() for s in value.strip().split(",") if s}
+        workflow_files = set()
+
+        for workflow_location in workflow_locations:
+            if os.path.isdir(workflow_location):
+                workflow_files.update(
+                    {str(path) for path in Path(workflow_location).rglob("*.y*ml")}
+                )
+            elif os.path.isfile(workflow_location):
+                if workflow_location.endswith(".yml") or workflow_location.endswith(
+                    ".yaml"
+                ):
+                    workflow_files.add(workflow_location)
+            else:
+                gha_utils.warning(
+                    f"Skipping '{workflow_location}' "
+                    "as it is not a valid file or directory"
+                )
+
+        return workflow_files
