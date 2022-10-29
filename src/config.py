@@ -174,23 +174,23 @@ class Configuration(NamedTuple):
         if not value or not isinstance(value, str):
             return None
 
+        workflow_file_paths = set()
         workflow_locations = {s.strip() for s in value.strip().split(",") if s}
-        workflow_files = set()
 
         for workflow_location in workflow_locations:
             if os.path.isdir(workflow_location):
-                workflow_files.update(
+                workflow_file_paths.update(
                     {str(path) for path in Path(workflow_location).rglob("*.y*ml")}
                 )
             elif os.path.isfile(workflow_location):
                 if workflow_location.endswith(".yml") or workflow_location.endswith(
                     ".yaml"
                 ):
-                    workflow_files.add(workflow_location)
+                    workflow_file_paths.add(workflow_location)
             else:
                 gha_utils.warning(
                     f"Skipping '{workflow_location}' "
                     "as it is not a valid file or directory"
                 )
 
-        return workflow_files
+        return workflow_file_paths
