@@ -24,7 +24,7 @@ def create_pull_request(
     head_branch_name: str,
     body: str,
     github_token: str | None = None,
-) -> int:
+) -> int | None:
     """Create pull request on GitHub"""
     with gha_utils.group("Create Pull Request"):
         url = f"https://api.github.com/repos/{repository_name}/pulls"
@@ -45,6 +45,13 @@ def create_pull_request(
                 f"Pull request opened at {response_data['html_url']} \U0001F389"
             )
             return response_data["number"]
+
+        elif (
+            response.status_code == 422
+            and "A pull request already exists for" in response.text
+        ):
+            gha_utils.warning("A pull request already exists")
+            return None
 
         gha_utils.error(
             f"Could not create a pull request on "
