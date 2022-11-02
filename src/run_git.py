@@ -37,7 +37,7 @@ def git_commit_changes(
         run_subprocess_command(
             ["git", "commit", f"--author={commit_author}", "-m", commit_message]
         )
-        run_subprocess_command(["git", "push", "-u", "origin", commit_branch_name])
+        run_subprocess_command(["git", "push", "-fu", "origin", commit_branch_name])
 
 
 def git_has_changes() -> bool:
