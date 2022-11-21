@@ -144,6 +144,40 @@ with **repo** and **workflow** scope and pass it to the action.
 
 To know more about how to pass a secret to GitHub actions you can [Read GitHub Docs](https://docs.github.com/en/actions/reference/encrypted-secrets)
 
+### A note about Git Large File Storage (LFS)
+
+If your repository uses [Git LFS](https://git-lfs.github.com/), you will need to manually remove the LFS-related hook files, otherwise the action
+will fail because Git will not be able to create a branch because the lfs executable is not installed inside the
+container used by this action.
+
+To work around this, just remove the hook files manually as an extra step **before** this action executes:
+
+```yaml
+# ...
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.WORKFLOW_SECRET }}
+          lfs: false
+
+      - name: Remove LFS hooks
+        # This repository uses Git LFS, but it not being
+        # in the container causes the action to fail to create a new branch.
+        # Removing the hooks manually is harmless and works around this issue.
+        run: |
+          rm .git/hooks/post-checkout
+          rm .git/hooks/pre-push
+
+      - name: Run GitHub Actions Version Updater
+        uses: saadmk11/github-actions-version-updater@v0.7.1
+        with:
+          # ...
+```
+
 ### GitHub Actions Version Updater in Action
 
 ![GitHub Actions Version Updater Demo](https://user-images.githubusercontent.com/24854406/113888349-15dbdc00-97e4-11eb-91a6-622828455d1f.gif)
