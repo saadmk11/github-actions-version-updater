@@ -68,6 +68,12 @@ class GitHubActionsVersionUpdater:
 
         return headers
 
+    def versionify(self, v):
+        try:
+            return tuple(map(int, (v.lstrip("v").split("."))))
+        except Exception:
+            return (0, 0)
+
     def run(self):
         """Entrypoint to the GitHub Action"""
         workflow_paths = self.get_workflow_paths()
@@ -118,6 +124,16 @@ class GitHubActionsVersionUpdater:
                         latest_release = self.get_latest_release(action_repository)
 
                         if not latest_release:
+                            continue
+
+                        if self.versionify(latest_release["tag_name"]) < self.versionify(version):
+                            print_message(
+                                (
+                                    f'Action "{action}" latest release {latest_release["tag_name"]} is '
+                                    'lower than current version - skipping'
+                                ),
+                                message_type='warning'
+                            )
                             continue
 
                         updated_action = (
