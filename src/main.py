@@ -22,6 +22,7 @@ from .config import (
 )
 from .run_git import (
     configure_git_author,
+    configure_safe_directory,
     create_new_git_branch,
     git_commit_changes,
     git_has_changes,
@@ -441,6 +442,9 @@ if __name__ == "__main__":
 
         gha_utils.echo("Using Configuration:")
         gha_utils.echo(pprint.pformat(user_configuration._asdict()))
+
+    # Configure Git Safe Directory
+    configure_safe_directory(action_environment.github_workspace)
 
     # Configure Git Author
     configure_git_author(
