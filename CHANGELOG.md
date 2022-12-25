@@ -1,3 +1,14 @@
+# Version: v0.7.2
+
+* [#38](https://github.com/saadmk11/github-actions-version-updater/pull/38): [pre-commit.ci] pre-commit autoupdate
+* [#42](https://github.com/saadmk11/github-actions-version-updater/pull/42): [pre-commit.ci] pre-commit autoupdate
+* [#44](https://github.com/saadmk11/github-actions-version-updater/pull/44): Document required workaround for LFS-enabled repositories
+* [#45](https://github.com/saadmk11/github-actions-version-updater/pull/45): [pre-commit.ci] pre-commit autoupdate
+* [#46](https://github.com/saadmk11/github-actions-version-updater/pull/46): [pre-commit.ci] pre-commit autoupdate
+* [#50](https://github.com/saadmk11/github-actions-version-updater/pull/50): Try Git Safe Directory to Resolve `fatal: not in a git directory`
+* [#51](https://github.com/saadmk11/github-actions-version-updater/pull/51): [pre-commit.ci] pre-commit autoupdate
+
+
 # Version: v0.7.1
 
 * [#32](https://github.com/saadmk11/github-actions-version-updater/pull/32): ci: update checkout version
