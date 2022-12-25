@@ -15,6 +15,16 @@ def configure_git_author(username: str, email: str) -> None:
         run_subprocess_command(["git", "config", "user.email", email])
 
 
+def configure_safe_directory(directory: str) -> None:
+    """
+    Configure git safe.directory.
+    """
+    with gha_utils.group("Configure Git Safe Directory"):
+        run_subprocess_command(
+            ["git", "config", "--global", "--add", "safe.directory", directory]
+        )
+
+
 def create_new_git_branch(base_branch_name: str, new_branch_name: str) -> None:
     """
     Create a new git branch from base branch.
