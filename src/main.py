@@ -148,6 +148,10 @@ class GitHubActionsVersionUpdater:
                 for action in all_actions:
                     try:
                         action_repository, current_version = action.split("@")
+                        # A GitHub Action can be in a subdirectory of a repository
+                        # e.g. `flatpak/flatpak-github-actions/flatpak-builder@v4`.
+                        # we only need `user/repo` part from action_repository
+                        action_repository = "/".join(action_repository.split("/")[:2])
                     except ValueError:
                         gha_utils.warning(
                             f'Action "{action}" is in a wrong format, '
