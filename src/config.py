@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -47,6 +48,7 @@ class Configuration(NamedTuple):
     git_committer_username: str = "github-actions[bot]"
     git_committer_email: str = "github-actions[bot]@users.noreply.github.com"
     pull_request_title: str = "Update GitHub Action Versions"
+    pull_request_branch: str | None = None
     commit_message: str = "Update GitHub Action Versions"
     ignore_actions: set[str] = set()
     update_version_with: str = LATEST_RELEASE_TAG
@@ -54,6 +56,15 @@ class Configuration(NamedTuple):
     pull_request_team_reviewers: set[str] = set()
     release_types: list[str] = ALL_RELEASE_TYPES
     extra_workflow_paths: set[str] = set()
+
+    def get_pull_request_branch_name(self) -> tuple[bool, str]:
+        """
+        Get the pull request branch name.
+        If the branch name is provided by the user set the force push flag to True
+        """
+        if self.pull_request_branch is None:
+            return (False, f"gh-actions-update-{int(time.time())}")
+        return (True, self.pull_request_branch)
 
     @property
     def git_commit_author(self) -> str:
@@ -81,6 +92,7 @@ class Configuration(NamedTuple):
             "git_committer_username": env.get("INPUT_COMMITTER_USERNAME"),
             "git_committer_email": env.get("INPUT_COMMITTER_EMAIL"),
             "pull_request_title": env.get("INPUT_PULL_REQUEST_TITLE"),
+            "pull_request_branch": env.get("INPUT_PULL_REQUEST_BRANCH"),
             "commit_message": env.get("INPUT_COMMIT_MESSAGE"),
             "ignore_actions": env.get("INPUT_IGNORE"),
             "update_version_with": env.get("INPUT_UPDATE_VERSION_WITH"),
@@ -196,3 +208,15 @@ class Configuration(NamedTuple):
                 )
 
         return workflow_file_paths
+
+    @staticmethod
+    def clean_pull_request_branch(value: Any) -> str | None:
+        if value and isinstance(value, str):
+            if value.lower() in ["main", "master"]:
+                gha_utils.error(
+                    "Invalid input for `pull_request_branch` field, "
+                    "the action does not support `main` or `master` branches"
+                )
+                raise SystemExit(1)
+            return value
+        return None

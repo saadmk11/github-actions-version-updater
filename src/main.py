@@ -77,12 +77,16 @@ class GitHubActionsVersionUpdater:
             gha_utils.append_job_summary(pull_request_body)
 
             if not self.user_config.skip_pull_request:
-                new_branch_name = f"gh-actions-update-{int(time.time())}"
+                (
+                    force_push,
+                    new_branch_name,
+                ) = self.user_config.get_pull_request_branch_name()
                 create_new_git_branch(self.env.base_branch, new_branch_name)
                 git_commit_changes(
                     self.user_config.commit_message,
                     self.user_config.git_commit_author,
                     new_branch_name,
+                    force_push,
                 )
                 pull_request_number = create_pull_request(
                     self.user_config.pull_request_title,
@@ -92,13 +96,14 @@ class GitHubActionsVersionUpdater:
                     pull_request_body,
                     self.user_config.github_token,
                 )
-                add_pull_request_reviewers(
-                    self.env.repository,
-                    pull_request_number,
-                    self.user_config.pull_request_user_reviewers,
-                    self.user_config.pull_request_team_reviewers,
-                    self.user_config.github_token,
-                )
+                if pull_request_number is not None:
+                    add_pull_request_reviewers(
+                        self.env.repository,
+                        pull_request_number,
+                        self.user_config.pull_request_user_reviewers,
+                        self.user_config.pull_request_team_reviewers,
+                        self.user_config.github_token,
+                    )
             else:
                 add_git_diff_to_job_summary()
                 gha_utils.error(
