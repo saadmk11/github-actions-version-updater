@@ -50,16 +50,13 @@ def git_commit_changes(
         run_subprocess_command(
             ["git", "commit", f"--author={commit_author}", "-m", commit_message]
         )
-        run_subprocess_command(
-            [
-                "git",
-                "push",
-                "-u",
-                "-f" if force_push else "",
-                "origin",
-                commit_branch_name,
-            ]
-        )
+        push_command = ["git", "push", "-u"]
+
+        if force_push:
+            push_command.append("-f")
+
+        push_command.extend(["origin", commit_branch_name])
+        run_subprocess_command(push_command)
 
 
 def git_has_changes() -> bool:
