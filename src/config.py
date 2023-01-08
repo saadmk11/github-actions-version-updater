@@ -211,6 +211,12 @@ class Configuration(NamedTuple):
 
     @staticmethod
     def clean_pull_request_branch(value: Any) -> str | None:
-        if value and isinstance(value, str) and value.lower() not in ["main", "master"]:
+        if value and isinstance(value, str):
+            if value.lower() in ["main", "master"]:
+                gha_utils.error(
+                    "Invalid input for `pull_request_branch` field, "
+                    "the action does not support `main` or `master` branches"
+                )
+                raise SystemExit(1)
             return value
         return None
