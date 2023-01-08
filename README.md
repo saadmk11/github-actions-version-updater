@@ -93,6 +93,7 @@ These are the inputs that can be provided on the workflow.
 | `release_types`                      | No       | A comma separated string of release types to use when updating the actions. By default, all release types are used to update the actions. Only Applicable for **"release-tag", "release-commit-sha"** (**Options:** "major", "minor", "patch" **[one or many seperated by comma]**) | "all"                                          | "minor, patch"                             |
 | `pull_request_user_reviewers`        | No       | A comma separated string (usernames) which denotes the users that should be added as reviewers to the pull request                                                                                                                                                                  | `null`                                         | "octocat, hubot, other_user"               |
 | `pull_request_team_reviewers`        | No       | A comma separated string (team slugs) which denotes the teams that should be added as reviewers to the pull request                                                                                                                                                                 | `null`                                         | "justice-league, other_team"               |
+| `pull_request_labels`                | No       | A comma separated string (label names) which denotes the labels which will be added to the pull request                                                                                                                                                                             | `null`                                         | "dependencies, automated"               |
 | `extra_workflow_locations`           | No       | A comma separated string of file or directory paths to look for workflows. By default, only the workflow files in the `.github/workflows` directory are checked updates                                                                                                             | `null`                                         | "path/to/directory, path/to/workflow.yaml" |
 
 #### Workflow with all options
@@ -133,6 +134,7 @@ jobs:
           release_types: "minor, patch"
           pull_request_user_reviewers: "octocat, hubot, other_user"
           pull_request_team_reviewers: "justice-league, other_team"
+          pull_request_labels: "dependencies, automated"
           extra_workflow_locations: "path/to/directory, path/to/workflow.yaml"
           # [Experimental]
           pull_request_branch: "actions-update"
