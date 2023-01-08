@@ -104,6 +104,43 @@ def add_pull_request_reviewers(
         )
 
 
+def add_pull_request_labels(
+    repository_name: str,
+    pull_request_number: int,
+    labels: set[str],
+    github_token: str | None = None,
+) -> None:
+    """Request reviewers for a pull request on GitHub"""
+    with gha_utils.group(f"Add Labels to Pull Request #{pull_request_number}"):
+
+        if not labels:
+            gha_utils.echo("No labels to add.")
+            return
+
+        payload = {"labels": list(labels)}
+
+        url = (
+            f"https://api.github.com/repos/{repository_name}/issues"
+            f"/{pull_request_number}/labels"
+        )
+
+        response = requests.post(
+            url, json=payload, headers=get_request_headers(github_token)
+        )
+
+        if response.status_code == 200:
+            gha_utils.notice(
+                f"Added '{labels}' labels to "
+                f"pull request #{pull_request_number} \U0001F389"
+            )
+            return
+
+        gha_utils.error(
+            f"Could not add labels to pull request #{pull_request_number} "
+            f"on {repository_name}, GitHub API Response: {response.json()}"
+        )
+
+
 def add_git_diff_to_job_summary() -> None:
     """Add git diff to job summary"""
     markdown_diff = (

@@ -52,6 +52,10 @@ inputs:
     description: 'A comma separated string (team slugs) which denotes the teams that should be added as reviewers to the pull request'
     required: false
     default: ''
+  pull_request_labels:
+    description: 'A comma separated string (label names) which denotes the labels which will be added to the pull request'
+    required: false
+    default: ''
   extra_workflow_locations:
     description: 'A comma separated string of file or directory paths to look for workflows. By default, only the workflow files in the .github/workflows directory are checked updates'
     required: false
