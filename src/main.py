@@ -147,11 +147,11 @@ class GitHubActionsVersionUpdater:
 
                 for action in all_actions:
                     try:
-                        action_repository, current_version = action.split("@")
+                        action_location, current_version = action.split("@")
                         # A GitHub Action can be in a subdirectory of a repository
                         # e.g. `flatpak/flatpak-github-actions/flatpak-builder@v4`.
                         # we only need `user/repo` part from action_repository
-                        action_repository = "/".join(action_repository.split("/")[:2])
+                        action_repository = "/".join(action_location.split("/")[:2])
                     except ValueError:
                         gha_utils.warning(
                             f'Action "{action}" is in a wrong format, '
@@ -170,7 +170,7 @@ class GitHubActionsVersionUpdater:
                         )
                         continue
 
-                    updated_action = f"{action_repository}@{new_version}"
+                    updated_action = f"{action_location}@{new_version}"
 
                     if action != updated_action:
                         gha_utils.echo(f'Found new version for "{action_repository}"')
