@@ -1,3 +1,13 @@
+# Version: v0.7.3
+
+* [#53](https://github.com/saadmk11/github-actions-version-updater/pull/53): [pre-commit.ci] pre-commit autoupdate
+* [#54](https://github.com/saadmk11/github-actions-version-updater/pull/54): Fix badge and update `actions/checkout` in README
+* [#55](https://github.com/saadmk11/github-actions-version-updater/pull/55): [Experimental Feature] Pull Request Branch Input Option
+* [#56](https://github.com/saadmk11/github-actions-version-updater/pull/56): [Feature] Add Option to Add Labels to Pull Requests
+* [#57](https://github.com/saadmk11/github-actions-version-updater/pull/57): [Enhancement] Handle Updates for GitHub Actions that are Located Inside Sub-Directories
+* [#58](https://github.com/saadmk11/github-actions-version-updater/pull/58): Update changelog-ci.yaml
+
+
 # Version: v0.7.2
 
 * [#38](https://github.com/saadmk11/github-actions-version-updater/pull/38): [pre-commit.ci] pre-commit autoupdate
