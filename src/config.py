@@ -211,6 +211,6 @@ class Configuration(NamedTuple):
 
     @staticmethod
     def clean_pull_request_branch(value: Any) -> str | None:
-        if value and isinstance(value, str):
+        if value and isinstance(value, str) and value.lower() not in ["main", "master"]:
             return value
         return None
