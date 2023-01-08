@@ -1,6 +1,5 @@
 import os
 import pprint
-import time
 from collections.abc import Generator
 from functools import cache, cached_property
 from typing import Any
