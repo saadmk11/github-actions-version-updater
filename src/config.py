@@ -54,6 +54,7 @@ class Configuration(NamedTuple):
     update_version_with: str = LATEST_RELEASE_TAG
     pull_request_user_reviewers: set[str] = set()
     pull_request_team_reviewers: set[str] = set()
+    pull_request_labels: set[str] = set()
     release_types: list[str] = ALL_RELEASE_TYPES
     extra_workflow_paths: set[str] = set()
 
@@ -99,6 +100,7 @@ class Configuration(NamedTuple):
             "release_types": env.get("INPUT_RELEASE_TYPES"),
             "pull_request_user_reviewers": env.get("INPUT_PULL_REQUEST_USER_REVIEWERS"),
             "pull_request_team_reviewers": env.get("INPUT_PULL_REQUEST_TEAM_REVIEWERS"),
+            "pull_request_labels": env.get("INPUT_PULL_REQUEST_LABELS"),
             "extra_workflow_paths": env.get("INPUT_EXTRA_WORKFLOW_LOCATIONS"),
         }
         return user_config
@@ -144,6 +146,12 @@ class Configuration(NamedTuple):
 
     @staticmethod
     def clean_pull_request_team_reviewers(value: Any) -> set[str] | None:
+        if value and isinstance(value, str):
+            return {s.strip() for s in value.strip().split(",") if s}
+        return None
+
+    @staticmethod
+    def clean_pull_request_labels(value: Any) -> set[str] | None:
         if value and isinstance(value, str):
             return {s.strip() for s in value.strip().split(",") if s}
         return None

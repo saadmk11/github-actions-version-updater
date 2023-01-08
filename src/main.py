@@ -29,6 +29,7 @@ from .run_git import (
 )
 from .utils import (
     add_git_diff_to_job_summary,
+    add_pull_request_labels,
     add_pull_request_reviewers,
     create_pull_request,
     display_whats_new,
@@ -102,6 +103,12 @@ class GitHubActionsVersionUpdater:
                         pull_request_number,
                         self.user_config.pull_request_user_reviewers,
                         self.user_config.pull_request_team_reviewers,
+                        self.user_config.github_token,
+                    )
+                    add_pull_request_labels(
+                        self.env.repository,
+                        pull_request_number,
+                        self.user_config.pull_request_labels,
                         self.user_config.github_token,
                     )
             else:
