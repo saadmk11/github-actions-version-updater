@@ -22,9 +22,9 @@ inputs:
     required: false
     default: 'Update GitHub Action Versions'
   pull_request_branch:
-    description: 'The pull request branch name'
+    description: 'The pull request branch name (If provided, the action will force push to the branch)'
     required: false
-    default: 'gh-actions-update-<timestamp>'
+    default: ''
   ignore:
     description: 'A comma separated string of GitHub Actions to ignore updates for'
     required: false

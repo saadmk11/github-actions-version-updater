@@ -50,7 +50,7 @@ def create_pull_request(
             response.status_code == 422
             and "A pull request already exists for" in response.text
         ):
-            gha_utils.warning("A pull request already exists")
+            gha_utils.notice("A pull request already exists")
             return None
 
         gha_utils.error(

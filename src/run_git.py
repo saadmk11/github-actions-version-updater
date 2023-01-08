@@ -37,7 +37,10 @@ def create_new_git_branch(base_branch_name: str, new_branch_name: str) -> None:
 
 
 def git_commit_changes(
-    commit_message: str, commit_author: str, commit_branch_name: str
+    commit_message: str,
+    commit_author: str,
+    commit_branch_name: str,
+    force_push: bool = False,
 ) -> None:
     """
     Commit the changed files.
@@ -47,7 +50,16 @@ def git_commit_changes(
         run_subprocess_command(
             ["git", "commit", f"--author={commit_author}", "-m", commit_message]
         )
-        run_subprocess_command(["git", "push", "-fu", "origin", commit_branch_name])
+        run_subprocess_command(
+            [
+                "git",
+                "push",
+                "-u",
+                "-f" if force_push else "",
+                "origin",
+                commit_branch_name,
+            ]
+        )
 
 
 def git_has_changes() -> bool:

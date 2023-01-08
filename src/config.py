@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -55,6 +56,15 @@ class Configuration(NamedTuple):
     pull_request_team_reviewers: set[str] = set()
     release_types: list[str] = ALL_RELEASE_TYPES
     extra_workflow_paths: set[str] = set()
+
+    def get_pull_request_branch_name(self) -> tuple[bool, str]:
+        """
+        Get the pull request branch name.
+        If the branch name is provided by the user set the force push flag to True
+        """
+        if self.pull_request_branch is None:
+            return (False, f"gh-actions-update-{int(time.time())}")
+        return (True, self.pull_request_branch)
 
     @property
     def git_commit_author(self) -> str:
@@ -198,3 +208,9 @@ class Configuration(NamedTuple):
                 )
 
         return workflow_file_paths
+
+    @staticmethod
+    def clean_pull_request_branch(value: Any) -> str | None:
+        if value and isinstance(value, str):
+            return value
+        return None
