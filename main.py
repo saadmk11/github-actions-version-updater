@@ -327,6 +327,9 @@ if __name__ == '__main__':
     # paths
     paths = os.environ['INPUT_PATHS']
 
+    # Change to workdir
+    os.chdir(workspace)
+
     # Group: Configure Git
     print_message('Configure Git', message_type='group')
 
