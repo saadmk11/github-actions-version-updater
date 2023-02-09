@@ -329,6 +329,7 @@ if __name__ == '__main__':
 
     # Change to workdir
     os.chdir(workspace)
+    subprocess.run(['git', 'config', '--global', '--add', 'safe.directory', workspace])
 
     # Group: Configure Git
     print_message('Configure Git', message_type='group')
