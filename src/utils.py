@@ -112,7 +112,6 @@ def add_pull_request_labels(
 ) -> None:
     """Request reviewers for a pull request on GitHub"""
     with gha_utils.group(f"Add Labels to Pull Request #{pull_request_number}"):
-
         if not labels:
             gha_utils.echo("No labels to add.")
             return
