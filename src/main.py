@@ -1,4 +1,3 @@
-import os
 import pprint
 from collections.abc import Generator
 from functools import cache, cached_property
@@ -9,16 +8,7 @@ import requests
 import yaml
 from packaging.version import LegacyVersion, Version, parse
 
-from .config import (
-    ALL_RELEASE_TYPES,
-    LATEST_RELEASE_COMMIT_SHA,
-    LATEST_RELEASE_TAG,
-    MAJOR_RELEASE,
-    MINOR_RELEASE,
-    PATCH_RELEASE,
-    ActionEnvironment,
-    Configuration,
-)
+from .config import ActionEnvironment, Configuration, ReleaseType, UpdateVersionWith
 from .run_git import (
     configure_git_author,
     configure_safe_directory,
@@ -94,7 +84,7 @@ class GitHubActionsVersionUpdater:
                     self.env.base_branch,
                     new_branch_name,
                     pull_request_body,
-                    self.user_config.github_token,
+                    self.user_config.token,
                 )
                 if pull_request_number is not None:
                     add_pull_request_reviewers(
@@ -102,13 +92,13 @@ class GitHubActionsVersionUpdater:
                         pull_request_number,
                         self.user_config.pull_request_user_reviewers,
                         self.user_config.pull_request_team_reviewers,
-                        self.user_config.github_token,
+                        self.user_config.token,
                     )
                     add_pull_request_labels(
                         self.env.repository,
                         pull_request_number,
                         self.user_config.pull_request_labels,
-                        self.user_config.github_token,
+                        self.user_config.token,
                     )
             else:
                 add_git_diff_to_job_summary()
@@ -201,13 +191,16 @@ class GitHubActionsVersionUpdater:
         """Generate pull request body line for pull request body"""
         start = f"* **[{action_repository}]({self.github_url}{action_repository})**"
 
-        if self.user_config.update_version_with == LATEST_RELEASE_TAG:
+        if self.user_config.update_version_with == UpdateVersionWith.LATEST_RELEASE_TAG:
             return (
                 f"{start} published a new release "
                 f"**[{version_data['tag_name']}]({version_data['html_url']})** "
                 f"on {version_data['published_at']}\n"
             )
-        elif self.user_config.update_version_with == LATEST_RELEASE_COMMIT_SHA:
+        elif (
+            self.user_config.update_version_with
+            == UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA
+        ):
             return (
                 f"{start} added a new "
                 f"**[commit]({version_data['commit_url']})** to "
@@ -227,7 +220,7 @@ class GitHubActionsVersionUpdater:
         url = f"{self.github_api_url}/repos/{action_repository}/releases?per_page=50"
 
         response = requests.get(
-            url, headers=get_request_headers(self.user_config.github_token)
+            url, headers=get_request_headers(self.user_config.token)
         )
 
         if response.status_code == 200:
@@ -251,21 +244,25 @@ class GitHubActionsVersionUpdater:
     @cached_property
     def _release_filter_function(self):
         """Get the release filter function"""
-        if self.user_config.release_types == ALL_RELEASE_TYPES:
+        if self.user_config.release_types == [
+            ReleaseType.MAJOR,
+            ReleaseType.MINOR,
+            ReleaseType.PATCH,
+        ]:
             return lambda r, c: True
 
         checks = []
 
-        if MAJOR_RELEASE in self.user_config.release_types:
+        if ReleaseType.MAJOR in self.user_config.release_types:
             checks.append(lambda r, c: parse(r["tag_name"]).major > c.major)
 
-        if MINOR_RELEASE in self.user_config.release_types:
+        if ReleaseType.MINOR in self.user_config.release_types:
             checks.append(
                 lambda r, c: parse(r["tag_name"]).major == c.major
                 and parse(r["tag_name"]).minor > c.minor,
             )
 
-        if PATCH_RELEASE in self.user_config.release_types:
+        if ReleaseType.PATCH in self.user_config.release_types:
             checks.append(
                 lambda r, c: parse(r["tag_name"]).major == c.major
                 and parse(r["tag_name"]).minor == c.minor
@@ -318,7 +315,7 @@ class GitHubActionsVersionUpdater:
         )
 
         response = requests.get(
-            url, headers=get_request_headers(self.user_config.github_token)
+            url, headers=get_request_headers(self.user_config.token)
         )
 
         if response.status_code == 200:
@@ -341,7 +338,7 @@ class GitHubActionsVersionUpdater:
         url = f"{self.github_api_url}/repos/{action_repository}"
 
         response = requests.get(
-            url, headers=get_request_headers(self.user_config.github_token)
+            url, headers=get_request_headers(self.user_config.token)
         )
 
         if response.status_code == 200:
@@ -361,13 +358,16 @@ class GitHubActionsVersionUpdater:
         """Get the new version for the action"""
         gha_utils.echo(f'Checking "{action_repository}" for updates...')
 
-        if self.user_config.update_version_with == LATEST_RELEASE_TAG:
+        if self.user_config.update_version_with == UpdateVersionWith.LATEST_RELEASE_TAG:
             latest_release_data = self._get_latest_version_release(
                 action_repository, current_version
             )
             return latest_release_data.get("tag_name"), latest_release_data
 
-        elif self.user_config.update_version_with == LATEST_RELEASE_COMMIT_SHA:
+        elif (
+            self.user_config.update_version_with
+            == UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA
+        ):
             latest_release_data = self._get_latest_version_release(
                 action_repository, current_version
             )
@@ -414,7 +414,7 @@ class GitHubActionsVersionUpdater:
         url = f"{self.github_api_url}/repos/{self.env.repository}/actions/workflows"
 
         response = requests.get(
-            url, headers=get_request_headers(self.user_config.github_token)
+            url, headers=get_request_headers(self.user_config.token)
         )
 
         if response.status_code == 200:
@@ -429,7 +429,7 @@ class GitHubActionsVersionUpdater:
     def _get_workflow_paths(self) -> set[str]:
         """Get all workflows of the repository"""
         workflow_paths = self._get_workflow_paths_from_api()
-        workflow_paths.update(self.user_config.extra_workflow_paths)
+        workflow_paths.update(self.user_config.extra_workflow_locations)
 
         if not workflow_paths:
             raise SystemExit(1)
@@ -452,14 +452,14 @@ class GitHubActionsVersionUpdater:
 
 if __name__ == "__main__":
     with gha_utils.group("Parse Configuration"):
-        user_configuration = Configuration.create(os.environ)
-        action_environment = ActionEnvironment.from_env(os.environ)
+        user_configuration = Configuration()
+        action_environment = ActionEnvironment()
 
         gha_utils.echo("Using Configuration:")
-        gha_utils.echo(pprint.pformat(user_configuration._asdict()))
+        gha_utils.echo(pprint.pformat(user_configuration.dict()))
 
     # Configure Git Safe Directory
-    configure_safe_directory(action_environment.github_workspace)
+    configure_safe_directory(action_environment.workspace)
 
     # Configure Git Author
     configure_git_author(
