@@ -42,8 +42,8 @@ class Configuration(BaseSettings):
 
     token: str | None = None
     skip_pull_request: bool = False
-    git_committer_username: str = "github-actions[bot]"
-    git_committer_email: str = "github-actions[bot]@users.noreply.github.com"
+    committer_username: str = "github-actions[bot]"
+    committer_email: str = "github-actions[bot]@users.noreply.github.com"
     pull_request_title: str = "Update GitHub Action Versions"
     pull_request_branch: str | None = None
     commit_message: str = "Update GitHub Action Versions"
@@ -65,9 +65,6 @@ class Configuration(BaseSettings):
         allow_mutation = False
         env_prefix = "INPUT_"
         fields = {
-            "git_committer_username": {
-                "env": "INPUT_COMMITTER_USERNAME",
-            },
             "ignore_actions": {
                 "env": "INPUT_IGNORE",
             },
@@ -100,7 +97,7 @@ class Configuration(BaseSettings):
     @property
     def git_commit_author(self) -> str:
         """git_commit_author option"""
-        return f"{self.git_committer_username} <{self.git_committer_email}>"
+        return f"{self.committer_username} <{self.committer_email}>"
 
     @validator("release_types", pre=True)
     def check_release_types(cls, value: frozenset[str]) -> frozenset[str]:
