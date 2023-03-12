@@ -463,8 +463,8 @@ if __name__ == "__main__":
 
     # Configure Git Author
     configure_git_author(
-        user_configuration.git_committer_username,
-        user_configuration.git_committer_email,
+        user_configuration.committer_username,
+        user_configuration.committer_email,
     )
 
     with gha_utils.group("Run GitHub Actions Version Updater"):
