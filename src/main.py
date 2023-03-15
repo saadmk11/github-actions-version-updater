@@ -67,22 +67,20 @@ class GitHubActionsVersionUpdater:
             gha_utils.append_job_summary(pull_request_body)
 
             if not self.user_config.skip_pull_request:
-                (
-                    force_push,
-                    new_branch_name,
-                ) = self.user_config.get_pull_request_branch_name()
-                create_new_git_branch(self.env.base_branch, new_branch_name)
+                create_new_git_branch(
+                    self.env.base_branch, self.user_config.pull_request_branch
+                )
                 git_commit_changes(
                     self.user_config.commit_message,
                     self.user_config.git_commit_author,
-                    new_branch_name,
-                    force_push,
+                    self.user_config.pull_request_branch,
+                    self.user_config.force_push,
                 )
                 pull_request_number = create_pull_request(
                     self.user_config.pull_request_title,
                     self.env.repository,
                     self.env.base_branch,
-                    new_branch_name,
+                    self.user_config.pull_request_branch,
                     pull_request_body,
                     self.user_config.token,
                 )
