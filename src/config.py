@@ -3,10 +3,9 @@ import os
 import time
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 import github_action_utils as gha_utils  # type: ignore
-from pydantic import BaseSettings, validator
+from pydantic import BaseSettings, Field, root_validator, validator
 
 
 class UpdateVersionWith(str, Enum):
@@ -46,18 +45,15 @@ class ActionEnvironment(BaseSettings):
 class Configuration(BaseSettings):
     """Configuration class for GitHub Actions Version Updater"""
 
-    token: str | None = None
+    token: str
+    pull_request_branch: str
     skip_pull_request: bool = False
+    force_push: bool = False
     committer_username: str = "github-actions[bot]"
     committer_email: str = "github-actions[bot]@users.noreply.github.com"
     pull_request_title: str = "Update GitHub Action Versions"
-    pull_request_branch: str | None = None
     commit_message: str = "Update GitHub Action Versions"
-    ignore_actions: frozenset[str] = frozenset()
     update_version_with: UpdateVersionWith = UpdateVersionWith.LATEST_RELEASE_TAG
-    pull_request_user_reviewers: frozenset[str] = frozenset()
-    pull_request_team_reviewers: frozenset[str] = frozenset()
-    pull_request_labels: frozenset[str] = frozenset()
     release_types: frozenset[ReleaseType] = frozenset(
         [
             ReleaseType.MAJOR,
@@ -65,7 +61,11 @@ class Configuration(BaseSettings):
             ReleaseType.PATCH,
         ]
     )
-    extra_workflow_locations: frozenset[str] = frozenset()
+    ignore_actions: frozenset[str] = Field(default_factory=frozenset)
+    pull_request_user_reviewers: frozenset[str] = Field(default_factory=frozenset)
+    pull_request_team_reviewers: frozenset[str] = Field(default_factory=frozenset)
+    pull_request_labels: frozenset[str] = Field(default_factory=frozenset)
+    extra_workflow_locations: frozenset[str] = Field(default_factory=frozenset)
 
     class Config:
         allow_mutation = False
@@ -91,19 +91,19 @@ class Configuration(BaseSettings):
                 return frozenset(s.strip() for s in raw_val.strip().split(",") if s)
             return raw_val
 
-    def get_pull_request_branch_name(self) -> tuple[bool, str]:
-        """
-        Get the pull request branch name.
-        If the branch name is provided by the user frozenset the force push flag to True
-        """
-        if self.pull_request_branch is None:
-            return (False, f"gh-actions-update-{int(time.time())}")
-        return (True, self.pull_request_branch)
-
     @property
     def git_commit_author(self) -> str:
         """git_commit_author option"""
         return f"{self.committer_username} <{self.committer_email}>"
+
+    @root_validator(pre=True)
+    def validate_pull_request_branch(cls, values):
+        if not values.get("pull_request_branch"):
+            values["pull_request_branch"] = f"gh-actions-update-{int(time.time())}"
+            values["force_push"] = False
+        else:
+            values["force_push"] = True
+        return values
 
     @validator("release_types", pre=True)
     def check_release_types(cls, value: frozenset[str]) -> frozenset[str]:
@@ -135,12 +135,10 @@ class Configuration(BaseSettings):
         return frozenset(workflow_file_paths)
 
     @validator("pull_request_branch")
-    def check_pull_request_branch(value: Any) -> str | None:
-        if isinstance(value, str):
-            if value.lower() in ["main", "master"]:
-                raise ValueError(
-                    "Invalid input for `pull_request_branch` field, "
-                    "the action does not support `main` or `master` branches"
-                )
-            return value
-        return None
+    def check_pull_request_branch(value: str) -> str:
+        if value.lower() in ["main", "master"]:
+            raise ValueError(
+                "Invalid input for `pull_request_branch` field, "
+                "the action does not support `main` or `master` branches"
+            )
+        return value
