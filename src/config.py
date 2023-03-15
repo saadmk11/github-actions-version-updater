@@ -14,11 +14,17 @@ class UpdateVersionWith(str, Enum):
     LATEST_RELEASE_COMMIT_SHA = "release-commit-sha"
     DEFAULT_BRANCH_COMMIT_SHA = "default-branch-sha"
 
+    def __repr__(self):
+        return self.value
+
 
 class ReleaseType(str, Enum):
     MAJOR = "major"
     MINOR = "minor"
     PATCH = "patch"
+
+    def __repr__(self):
+        return self.value
 
 
 class ActionEnvironment(BaseSettings):
