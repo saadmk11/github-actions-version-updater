@@ -1,3 +1,13 @@
+# Version: v0.7.4
+
+* [#60](https://github.com/saadmk11/github-actions-version-updater/pull/60): [pre-commit.ci] pre-commit autoupdate
+* [#65](https://github.com/saadmk11/github-actions-version-updater/pull/65): Configuration Management with Pydantic
+* [#66](https://github.com/saadmk11/github-actions-version-updater/pull/66): [pre-commit.ci] pre-commit autoupdate
+* [#67](https://github.com/saadmk11/github-actions-version-updater/pull/67): use notice, not warning, for unsupported formats
+* [#68](https://github.com/saadmk11/github-actions-version-updater/pull/68): Add Fine-grained Personal Access Token Documentation
+* [#69](https://github.com/saadmk11/github-actions-version-updater/pull/69): Add Alternatives
+
+
 # Version: v0.7.3
 
 * [#53](https://github.com/saadmk11/github-actions-version-updater/pull/53): [pre-commit.ci] pre-commit autoupdate
