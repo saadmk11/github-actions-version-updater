@@ -454,7 +454,7 @@ if __name__ == "__main__":
         action_environment = ActionEnvironment()
 
         gha_utils.echo("Using Configuration:")
-        gha_utils.echo(pprint.pformat(user_configuration.dict()))
+        gha_utils.echo(pprint.pformat(user_configuration.dict(exclude={"token"})))
 
     # Configure Git Safe Directory
     configure_safe_directory(action_environment.workspace)
