@@ -63,8 +63,8 @@ def create_pull_request(
 def add_pull_request_reviewers(
     repository_name: str,
     pull_request_number: int,
-    pull_request_user_reviewers: set[str],
-    pull_request_team_reviewers: set[str],
+    pull_request_user_reviewers: frozenset[str],
+    pull_request_team_reviewers: frozenset[str],
     github_token: str | None = None,
 ) -> None:
     """Request reviewers for a pull request on GitHub"""
@@ -107,7 +107,7 @@ def add_pull_request_reviewers(
 def add_pull_request_labels(
     repository_name: str,
     pull_request_number: int,
-    labels: set[str],
+    labels: frozenset[str],
     github_token: str | None = None,
 ) -> None:
     """Request reviewers for a pull request on GitHub"""

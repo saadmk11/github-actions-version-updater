@@ -1,230 +1,148 @@
 import json
 import os
 import time
-from collections.abc import Mapping
+from enum import Enum
 from pathlib import Path
-from typing import Any, NamedTuple
 
 import github_action_utils as gha_utils  # type: ignore
-
-LATEST_RELEASE_TAG = "release-tag"
-LATEST_RELEASE_COMMIT_SHA = "release-commit-sha"
-DEFAULT_BRANCH_COMMIT_SHA = "default-branch-sha"
-
-UPDATE_VERSION_WITH_LIST = [
-    LATEST_RELEASE_TAG,
-    LATEST_RELEASE_COMMIT_SHA,
-    DEFAULT_BRANCH_COMMIT_SHA,
-]
-
-MAJOR_RELEASE = "major"
-MINOR_RELEASE = "minor"
-PATCH_RELEASE = "patch"
-
-ALL_RELEASE_TYPES = [MAJOR_RELEASE, MINOR_RELEASE, PATCH_RELEASE]
+from pydantic import BaseSettings, Field, root_validator, validator
 
 
-class ActionEnvironment(NamedTuple):
+class UpdateVersionWith(str, Enum):
+    LATEST_RELEASE_TAG = "release-tag"
+    LATEST_RELEASE_COMMIT_SHA = "release-commit-sha"
+    DEFAULT_BRANCH_COMMIT_SHA = "default-branch-sha"
+
+    def __repr__(self):
+        return self.value
+
+
+class ReleaseType(str, Enum):
+    MAJOR = "major"
+    MINOR = "minor"
+    PATCH = "patch"
+
+    def __repr__(self):
+        return self.value
+
+
+class ActionEnvironment(BaseSettings):
     repository: str
     base_branch: str
     event_name: str
-    github_workspace: str
+    workspace: str
 
-    @classmethod
-    def from_env(cls, env: Mapping[str, str]) -> "ActionEnvironment":
-        return cls(
-            repository=env["GITHUB_REPOSITORY"],
-            base_branch=env["GITHUB_REF"],
-            event_name=env["GITHUB_EVENT_NAME"],
-            github_workspace=env["GITHUB_WORKSPACE"],
-        )
+    class Config:
+        allow_mutation = False
+        env_prefix = "GITHUB_"
+        fields = {
+            "base_branch": {
+                "env": "GITHUB_REF",
+            },
+        }
 
 
-class Configuration(NamedTuple):
+class Configuration(BaseSettings):
     """Configuration class for GitHub Actions Version Updater"""
 
-    github_token: str | None = None
+    token: str = Field(min_length=10)
+    pull_request_branch: str = Field(min_length=1)
     skip_pull_request: bool = False
-    git_committer_username: str = "github-actions[bot]"
-    git_committer_email: str = "github-actions[bot]@users.noreply.github.com"
-    pull_request_title: str = "Update GitHub Action Versions"
-    pull_request_branch: str | None = None
-    commit_message: str = "Update GitHub Action Versions"
-    ignore_actions: set[str] = set()
-    update_version_with: str = LATEST_RELEASE_TAG
-    pull_request_user_reviewers: set[str] = set()
-    pull_request_team_reviewers: set[str] = set()
-    pull_request_labels: set[str] = set()
-    release_types: list[str] = ALL_RELEASE_TYPES
-    extra_workflow_paths: set[str] = set()
+    force_push: bool = False
+    committer_username: str = Field(min_length=1, default="github-actions[bot]")
+    committer_email: str = Field(
+        min_length=5, default="github-actions[bot]@users.noreply.github.com"
+    )
+    pull_request_title: str = Field(
+        min_length=1, default="Update GitHub Action Versions"
+    )
+    commit_message: str = Field(min_length=1, default="Update GitHub Action Versions")
+    update_version_with: UpdateVersionWith = UpdateVersionWith.LATEST_RELEASE_TAG
+    release_types: frozenset[ReleaseType] = frozenset(
+        [
+            ReleaseType.MAJOR,
+            ReleaseType.MINOR,
+            ReleaseType.PATCH,
+        ]
+    )
+    ignore_actions: frozenset[str] = Field(default_factory=frozenset)
+    pull_request_user_reviewers: frozenset[str] = Field(default_factory=frozenset)
+    pull_request_team_reviewers: frozenset[str] = Field(default_factory=frozenset)
+    pull_request_labels: frozenset[str] = Field(default_factory=frozenset)
+    extra_workflow_locations: frozenset[str] = Field(default_factory=frozenset)
 
-    def get_pull_request_branch_name(self) -> tuple[bool, str]:
-        """
-        Get the pull request branch name.
-        If the branch name is provided by the user set the force push flag to True
-        """
-        if self.pull_request_branch is None:
-            return (False, f"gh-actions-update-{int(time.time())}")
-        return (True, self.pull_request_branch)
+    class Config:
+        allow_mutation = False
+        env_prefix = "INPUT_"
+        fields = {
+            "ignore_actions": {
+                "env": "INPUT_IGNORE",
+            },
+        }
+
+        @classmethod
+        def parse_env_var(cls, field_name: str, raw_val: str):
+            if field_name in [
+                "ignore_actions",
+                "pull_request_user_reviewers",
+                "pull_request_team_reviewers",
+                "pull_request_labels",
+                "release_types",
+                "extra_workflow_locations",
+            ]:
+                if raw_val.startswith("[") and raw_val.endswith("]"):
+                    return frozenset(json.loads(raw_val))
+                return frozenset(s.strip() for s in raw_val.strip().split(",") if s)
+            return raw_val
 
     @property
     def git_commit_author(self) -> str:
         """git_commit_author option"""
-        return f"{self.git_committer_username} <{self.git_committer_email}>"
+        return f"{self.committer_username} <{self.committer_email}>"
 
-    @classmethod
-    def create(cls, env: Mapping[str, str | None]) -> "Configuration":
-        """
-        Create a Configuration object from environment variables
-        """
-        cleaned_user_config: dict[str, Any] = cls.clean_user_config(
-            cls.get_user_config(env)
-        )
-        return cls(**cleaned_user_config)
-
-    @classmethod
-    def get_user_config(cls, env: Mapping[str, str | None]) -> dict[str, str | None]:
-        """
-        Read user provided input and return user configuration
-        """
-        user_config: dict[str, str | None] = {
-            "github_token": env.get("INPUT_TOKEN"),
-            "skip_pull_request": env.get("INPUT_SKIP_PULL_REQUEST"),
-            "git_committer_username": env.get("INPUT_COMMITTER_USERNAME"),
-            "git_committer_email": env.get("INPUT_COMMITTER_EMAIL"),
-            "pull_request_title": env.get("INPUT_PULL_REQUEST_TITLE"),
-            "pull_request_branch": env.get("INPUT_PULL_REQUEST_BRANCH"),
-            "commit_message": env.get("INPUT_COMMIT_MESSAGE"),
-            "ignore_actions": env.get("INPUT_IGNORE"),
-            "update_version_with": env.get("INPUT_UPDATE_VERSION_WITH"),
-            "release_types": env.get("INPUT_RELEASE_TYPES"),
-            "pull_request_user_reviewers": env.get("INPUT_PULL_REQUEST_USER_REVIEWERS"),
-            "pull_request_team_reviewers": env.get("INPUT_PULL_REQUEST_TEAM_REVIEWERS"),
-            "pull_request_labels": env.get("INPUT_PULL_REQUEST_LABELS"),
-            "extra_workflow_paths": env.get("INPUT_EXTRA_WORKFLOW_LOCATIONS"),
-        }
-        return user_config
-
-    @classmethod
-    def clean_user_config(cls, user_config: dict[str, str | None]) -> dict[str, Any]:
-        cleaned_user_config: dict[str, Any] = {}
-
-        for key, value in user_config.items():
-            if key in cls._fields:
-                cleaned_value = getattr(cls, f"clean_{key.lower()}", lambda x: x)(value)
-
-                if cleaned_value is not None:
-                    cleaned_user_config[key] = cleaned_value
-
-        return cleaned_user_config
-
-    @staticmethod
-    def clean_ignore_actions(value: Any) -> set[str] | None:
-        if isinstance(value, str) and value.startswith("[") and value.endswith("]"):
-            ignore_actions = json.loads(value)
-
-            if isinstance(ignore_actions, list) and all(
-                isinstance(item, str) for item in ignore_actions
-            ):
-                return set(ignore_actions)
-            else:
-                gha_utils.error(
-                    "Invalid input for `ignore` field, "
-                    f"expected JSON array of strings but got `{value}`"
-                )
-                raise SystemExit(1)
-        elif value and isinstance(value, str):
-            return {s.strip() for s in value.strip().split(",") if s}
+    @root_validator(pre=True)
+    def validate_pull_request_branch(cls, values):
+        if not values.get("pull_request_branch"):
+            values["pull_request_branch"] = f"gh-actions-update-{int(time.time())}"
+            values["force_push"] = False
         else:
-            return None
+            values["force_push"] = True
+        return values
 
-    @staticmethod
-    def clean_pull_request_user_reviewers(value: Any) -> set[str] | None:
-        if value and isinstance(value, str):
-            return {s.strip() for s in value.strip().split(",") if s}
-        return None
+    @validator("release_types", pre=True)
+    def check_release_types(cls, value: frozenset[str]) -> frozenset[str]:
+        if value == {"all"}:
+            return frozenset(["major", "minor", "patch"])
 
-    @staticmethod
-    def clean_pull_request_team_reviewers(value: Any) -> set[str] | None:
-        if value and isinstance(value, str):
-            return {s.strip() for s in value.strip().split(",") if s}
-        return None
+        return value
 
-    @staticmethod
-    def clean_pull_request_labels(value: Any) -> set[str] | None:
-        if value and isinstance(value, str):
-            return {s.strip() for s in value.strip().split(",") if s}
-        return None
+    @validator("extra_workflow_locations")
+    def check_extra_workflow_locations(value: frozenset[str]) -> frozenset[str]:
+        workflow_file_paths = []
 
-    @staticmethod
-    def clean_release_types(value: Any) -> list[str] | None:
-        if value and isinstance(value, str):
-            values = [s.strip() for s in value.lower().strip().split(",") if s]
-            if values == ["all"]:
-                return ALL_RELEASE_TYPES
-            elif all(i in ALL_RELEASE_TYPES for i in values):
-                return values
-            else:
-                gha_utils.error(
-                    "Invalid input for `release_types` field, "
-                    f"expected one/all of {ALL_RELEASE_TYPES} but got `{value}`"
-                )
-                raise SystemExit(1)
-        return None
-
-    @staticmethod
-    def clean_skip_pull_request(value: Any) -> bool | None:
-        if value in [1, "1", True, "true", "True"]:
-            return True
-        return None
-
-    @staticmethod
-    def clean_update_version_with(value: Any) -> str | None:
-        if value and value not in UPDATE_VERSION_WITH_LIST:
-            gha_utils.error(
-                "Invalid input for `update_version_with` field, "
-                f"expected one of {UPDATE_VERSION_WITH_LIST} but got `{value}`"
-            )
-            raise SystemExit(1)
-        elif value:
-            return value
-        else:
-            return None
-
-    @staticmethod
-    def clean_extra_workflow_paths(value: Any) -> set[str] | None:
-        if not value or not isinstance(value, str):
-            return None
-
-        workflow_file_paths = set()
-        workflow_locations = {s.strip() for s in value.strip().split(",") if s}
-
-        for workflow_location in workflow_locations:
+        for workflow_location in value:
             if os.path.isdir(workflow_location):
-                workflow_file_paths.update(
-                    {str(path) for path in Path(workflow_location).rglob("*.y*ml")}
+                workflow_file_paths.extend(
+                    [str(path) for path in Path(workflow_location).rglob("*.y*ml")]
                 )
             elif os.path.isfile(workflow_location):
                 if workflow_location.endswith(".yml") or workflow_location.endswith(
                     ".yaml"
                 ):
-                    workflow_file_paths.add(workflow_location)
+                    workflow_file_paths.append(workflow_location)
             else:
                 gha_utils.warning(
                     f"Skipping '{workflow_location}' "
                     "as it is not a valid file or directory"
                 )
 
-        return workflow_file_paths
+        return frozenset(workflow_file_paths)
 
-    @staticmethod
-    def clean_pull_request_branch(value: Any) -> str | None:
-        if value and isinstance(value, str):
-            if value.lower() in ["main", "master"]:
-                gha_utils.error(
-                    "Invalid input for `pull_request_branch` field, "
-                    "the action does not support `main` or `master` branches"
-                )
-                raise SystemExit(1)
-            return value
-        return None
+    @validator("pull_request_branch")
+    def check_pull_request_branch(value: str) -> str:
+        if value.lower() in ["main", "master"]:
+            raise ValueError(
+                "Invalid input for `pull_request_branch` field, "
+                f"branch `{value}` can not be used as the pull request branch."
+            )
+        return value
