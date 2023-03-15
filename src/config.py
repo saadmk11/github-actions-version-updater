@@ -45,14 +45,18 @@ class ActionEnvironment(BaseSettings):
 class Configuration(BaseSettings):
     """Configuration class for GitHub Actions Version Updater"""
 
-    token: str
-    pull_request_branch: str
+    token: str = Field(min_length=10)
+    pull_request_branch: str = Field(min_length=1)
     skip_pull_request: bool = False
     force_push: bool = False
-    committer_username: str = "github-actions[bot]"
-    committer_email: str = "github-actions[bot]@users.noreply.github.com"
-    pull_request_title: str = "Update GitHub Action Versions"
-    commit_message: str = "Update GitHub Action Versions"
+    committer_username: str = Field(min_length=1, default="github-actions[bot]")
+    committer_email: str = Field(
+        min_length=5, default="github-actions[bot]@users.noreply.github.com"
+    )
+    pull_request_title: str = Field(
+        min_length=1, default="Update GitHub Action Versions"
+    )
+    commit_message: str = Field(min_length=1, default="Update GitHub Action Versions")
     update_version_with: UpdateVersionWith = UpdateVersionWith.LATEST_RELEASE_TAG
     release_types: frozenset[ReleaseType] = frozenset(
         [
