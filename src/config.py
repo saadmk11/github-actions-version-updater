@@ -139,6 +139,6 @@ class Configuration(BaseSettings):
         if value.lower() in ["main", "master"]:
             raise ValueError(
                 "Invalid input for `pull_request_branch` field, "
-                "the action does not support `main` or `master` branches"
+                f"branch `{value}` can not be set as the pull request branch."
             )
         return value
