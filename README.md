@@ -199,6 +199,11 @@ jobs:
           # ...
 ```
 
+### Alternative
+
+You can also use [Dependabot](https://docs.github.com/en/github/administering-a-repository/keeping-your-actions-up-to-date-with-dependabot) to update your GitHub Actions.
+
+
 ### GitHub Actions Version Updater in Action
 
 ![GitHub Actions Version Updater Demo](https://user-images.githubusercontent.com/24854406/113888349-15dbdc00-97e4-11eb-91a6-622828455d1f.gif)
