@@ -152,9 +152,9 @@ class GitHubActionsVersionUpdater:
                         # we only need `user/repo` part from action_repository
                         action_repository = "/".join(action_location.split("/")[:2])
                     except ValueError:
-                        gha_utils.warning(
-                            f'Action "{action}" is in a wrong format, '
-                            "We only support community actions currently"
+                        gha_utils.notice(
+                            f'Action "{action}" is in an unsupported format. '
+                            "We only support community actions currently."
                         )
                         continue
 
