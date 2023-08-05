@@ -199,6 +199,47 @@ jobs:
           # ...
 ```
 
+### Outputs
+
+| Output Name | Description                             |
+| ----------- |-----------------------------------------|
+| `GHA_UPDATE_PR_NUMBER` | The number of the created pull request. |
+
+#### Example Workflow
+
+```yaml
+name: GitHub Actions Version Updater
+
+# Controls when the action will run.
+on:
+  # can be used to run workflow manually
+  workflow_dispatch:
+  schedule:
+    # Automatically run on every Sunday
+    - cron:  '0 0 * * 0'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          # [Required] Access token with `workflow` scope.
+          token: ${{ secrets.WORKFLOW_SECRET }}
+
+      - name: Run GitHub Actions Version Updater
+        uses: saadmk11/github-actions-version-updater@v0.7.4
+        # Required to get the PR number
+        id: gha-update
+        with:
+          # [Required] Access token with `workflow` scope.
+          token: ${{ secrets.WORKFLOW_SECRET }}
+          skip_pull_request: 'false'
+      - name: Get PR Number
+        run: echo "The PR Number is ${{ steps.gha-update.outputs.GHA_UPDATE_PR_NUMBER }}"
+```
+
 ### Alternative
 
 You can also use [Dependabot](https://docs.github.com/en/github/administering-a-repository/keeping-your-actions-up-to-date-with-dependabot) to update your GitHub Actions.
