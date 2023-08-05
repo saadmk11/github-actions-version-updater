@@ -85,6 +85,7 @@ class GitHubActionsVersionUpdater:
                     self.user_config.token,
                 )
                 if pull_request_number is not None:
+                    gha_utils.set_output("GHA_UPDATE_PR_NUMBER", pull_request_number)
                     add_pull_request_reviewers(
                         self.env.repository,
                         pull_request_number,
