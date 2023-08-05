@@ -226,11 +226,20 @@ class GitHubActionsVersionUpdater:
             response_data = response.json()
 
             if response_data:
-                # Sort through the releases returned
-                # by GitHub API using tag_name
+                releases = [
+                    {
+                        "published_at": release["published_at"],
+                        "html_url": release["html_url"],
+                        "tag_name": release["tag_name"],
+                        "tag_name_parsed": parse(release["tag_name"]),
+                    }
+                    for release in response_data
+                    if not release["prerelease"]
+                ]
+                # Sort through the releases returned by GitHub API using tag_name
                 return sorted(
-                    filter(lambda r: not r["prerelease"], response_data),
-                    key=lambda r: parse(r["tag_name"]),
+                    releases,
+                    key=lambda r: r["tag_name_parsed"],
                     reverse=True,
                 )
 
@@ -253,19 +262,19 @@ class GitHubActionsVersionUpdater:
         checks = []
 
         if ReleaseType.MAJOR in self.user_config.release_types:
-            checks.append(lambda r, c: parse(r["tag_name"]).major > c.major)
+            checks.append(lambda r, c: r["tag_name_parsed"].major > c.major)
 
         if ReleaseType.MINOR in self.user_config.release_types:
             checks.append(
-                lambda r, c: parse(r["tag_name"]).major == c.major
-                and parse(r["tag_name"]).minor > c.minor,
+                lambda r, c: r["tag_name_parsed"].major == c.major
+                and r["tag_name_parsed"].minor > c.minor,
             )
 
         if ReleaseType.PATCH in self.user_config.release_types:
             checks.append(
-                lambda r, c: parse(r["tag_name"]).major == c.major
-                and parse(r["tag_name"]).minor == c.minor
-                and parse(r["tag_name"]).micro > c.micro
+                lambda r, c: r["tag_name_parsed"].major == c.major
+                and r["tag_name_parsed"].minor == c.minor
+                and r["tag_name_parsed"].micro > c.micro
             )
 
         def filter_func(release_tag: str, current_version: Version) -> bool:
@@ -278,31 +287,40 @@ class GitHubActionsVersionUpdater:
     ) -> dict[str, str]:
         """Get the latest release"""
         github_releases = self._get_github_releases(action_repository)
+        latest_release: dict[str, Any] = {}
 
         if not github_releases:
-            return {}
+            return latest_release
 
         parsed_current_version: LegacyVersion | Version = parse(current_version)
-        latest_release: dict[str, Any]
 
         if isinstance(parsed_current_version, LegacyVersion):
+            gha_utils.warning(
+                f"Current version (`{current_version}`) of `{action_repository}` does not follow "
+                "Semantic Versioning specification. This can yield unexpected results, "
+                "please be careful while using the updates suggested by this action."
+            )
             latest_release = github_releases[0]
         else:
-            latest_release = next(
-                filter(
-                    lambda r: self._release_filter_function(r, parsed_current_version),
-                    github_releases,
-                ),
-                {},
-            )
+            try:
+                latest_release = next(
+                    filter(
+                        lambda r: self._release_filter_function(
+                            r, parsed_current_version
+                        ),
+                        github_releases,
+                    ),
+                    {},
+                )
+            except AttributeError:
+                latest_release = github_releases[0]
+                gha_utils.warning(
+                    f"GitHub releases of `{action_repository}` does not follow "
+                    "Semantic Versioning specification. This can yield unexpected results, "
+                    "please be careful while using the updates suggested by this action."
+                )
 
-        if latest_release:
-            return {
-                "published_at": latest_release["published_at"],
-                "html_url": latest_release["html_url"],
-                "tag_name": latest_release["tag_name"],
-            }
-        return {}
+        return latest_release
 
     def _get_commit_data(
         self, action_repository: str, tag_or_branch_name: str
