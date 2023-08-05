@@ -230,7 +230,8 @@ class GitHubActionsVersionUpdater:
                     {
                         "published_at": release["published_at"],
                         "html_url": release["html_url"],
-                        "tag_name": parse(release["tag_name"]),
+                        "tag_name": release["tag_name"],
+                        "tag_name_parsed": parse(release["tag_name"]),
                     }
                     for release in response_data
                     if not release["prerelease"]
@@ -238,7 +239,7 @@ class GitHubActionsVersionUpdater:
                 # Sort through the releases returned by GitHub API using tag_name
                 return sorted(
                     releases,
-                    key=lambda r: r["tag_name"],
+                    key=lambda r: r["tag_name_parsed"],
                     reverse=True,
                 )
 
@@ -261,19 +262,19 @@ class GitHubActionsVersionUpdater:
         checks = []
 
         if ReleaseType.MAJOR in self.user_config.release_types:
-            checks.append(lambda r, c: r["tag_name"].major > c.major)
+            checks.append(lambda r, c: r["tag_name_parsed"].major > c.major)
 
         if ReleaseType.MINOR in self.user_config.release_types:
             checks.append(
-                lambda r, c: r["tag_name"].major == c.major
-                and r["tag_name"].minor > c.minor,
+                lambda r, c: r["tag_name_parsed"].major == c.major
+                and r["tag_name_parsed"].minor > c.minor,
             )
 
         if ReleaseType.PATCH in self.user_config.release_types:
             checks.append(
-                lambda r, c: r["tag_name"].major == c.major
-                and r["tag_name"].minor == c.minor
-                and r["tag_name"].micro > c.micro
+                lambda r, c: r["tag_name_parsed"].major == c.major
+                and r["tag_name_parsed"].minor == c.minor
+                and r["tag_name_parsed"].micro > c.micro
             )
 
         def filter_func(release_tag: str, current_version: Version) -> bool:
