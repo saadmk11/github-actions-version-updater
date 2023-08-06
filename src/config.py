@@ -3,9 +3,17 @@ import os
 import time
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 import github_action_utils as gha_utils  # type: ignore
-from pydantic import BaseSettings, Field, root_validator, validator
+from pydantic import Field, field_validator, model_validator
+from pydantic.fields import FieldInfo
+from pydantic_settings import (
+    BaseSettings,
+    EnvSettingsSource,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 
 class UpdateVersionWith(str, Enum):
@@ -26,20 +34,36 @@ class ReleaseType(str, Enum):
         return self.value
 
 
+class CustomEnvSettingsSource(EnvSettingsSource):
+    def prepare_field_value(
+        self, field_name: str, field: FieldInfo, value: Any, value_is_complex: bool
+    ) -> Any:
+        if field_name in [
+            "ignore_actions",
+            "pull_request_user_reviewers",
+            "pull_request_team_reviewers",
+            "pull_request_labels",
+            "release_types",
+            "extra_workflow_locations",
+        ]:
+            if not value:
+                return None
+            if value.startswith("[") and value.endswith("]"):
+                return frozenset(json.loads(value))
+            return frozenset(s.strip() for s in value.strip().split(",") if s)
+
+        return value
+
+
 class ActionEnvironment(BaseSettings):
     repository: str
-    base_branch: str
+    base_branch: str = Field(alias="GITHUB_REF")
     event_name: str
     workspace: str
 
-    class Config:
-        allow_mutation = False
-        env_prefix = "GITHUB_"
-        fields = {
-            "base_branch": {
-                "env": "GITHUB_REF",
-            },
-        }
+    model_config = SettingsConfigDict(
+        case_sensitive=False, frozen=True, env_prefix="GITHUB_"
+    )
 
 
 class Configuration(BaseSettings):
@@ -65,43 +89,41 @@ class Configuration(BaseSettings):
             ReleaseType.PATCH,
         ]
     )
-    ignore_actions: frozenset[str] = Field(default_factory=frozenset)
+    ignore_actions: frozenset[str] = Field(
+        default_factory=frozenset, alias="INPUT_IGNORE"
+    )
     pull_request_user_reviewers: frozenset[str] = Field(default_factory=frozenset)
     pull_request_team_reviewers: frozenset[str] = Field(default_factory=frozenset)
     pull_request_labels: frozenset[str] = Field(default_factory=frozenset)
     extra_workflow_locations: frozenset[str] = Field(default_factory=frozenset)
+    model_config = SettingsConfigDict(
+        case_sensitive=False, frozen=True, env_prefix="INPUT_"
+    )
 
-    class Config:
-        allow_mutation = False
-        env_prefix = "INPUT_"
-        fields = {
-            "ignore_actions": {
-                "env": "INPUT_IGNORE",
-            },
-        }
-
-        @classmethod
-        def parse_env_var(cls, field_name: str, raw_val: str):
-            if field_name in [
-                "ignore_actions",
-                "pull_request_user_reviewers",
-                "pull_request_team_reviewers",
-                "pull_request_labels",
-                "release_types",
-                "extra_workflow_locations",
-            ]:
-                if raw_val.startswith("[") and raw_val.endswith("]"):
-                    return frozenset(json.loads(raw_val))
-                return frozenset(s.strip() for s in raw_val.strip().split(",") if s)
-            return raw_val
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (
+            init_settings,
+            CustomEnvSettingsSource(settings_cls),
+            dotenv_settings,
+            file_secret_settings,
+        )
 
     @property
     def git_commit_author(self) -> str:
         """git_commit_author option"""
         return f"{self.committer_username} <{self.committer_email}>"
 
-    @root_validator(pre=True)
-    def validate_pull_request_branch(cls, values):
+    @model_validator(mode="before")
+    @classmethod
+    def validate_pull_request_branch(cls, values: Any) -> Any:
         if not values.get("pull_request_branch"):
             values["pull_request_branch"] = f"gh-actions-update-{int(time.time())}"
             values["force_push"] = False
@@ -109,15 +131,23 @@ class Configuration(BaseSettings):
             values["force_push"] = True
         return values
 
-    @validator("release_types", pre=True)
+    @field_validator("release_types", mode="before")
+    @classmethod
     def check_release_types(cls, value: frozenset[str]) -> frozenset[str]:
         if value == {"all"}:
-            return frozenset(["major", "minor", "patch"])
+            return frozenset(
+                [
+                    ReleaseType.MAJOR,
+                    ReleaseType.MINOR,
+                    ReleaseType.PATCH,
+                ]
+            )
 
         return value
 
-    @validator("extra_workflow_locations")
-    def check_extra_workflow_locations(value: frozenset[str]) -> frozenset[str]:
+    @field_validator("extra_workflow_locations")
+    @classmethod
+    def check_extra_workflow_locations(cls, value: frozenset[str]) -> frozenset[str]:
         workflow_file_paths = []
 
         for workflow_location in value:
@@ -138,8 +168,9 @@ class Configuration(BaseSettings):
 
         return frozenset(workflow_file_paths)
 
-    @validator("pull_request_branch")
-    def check_pull_request_branch(value: str) -> str:
+    @field_validator("pull_request_branch")
+    @classmethod
+    def check_pull_request_branch(cls, value: str) -> str:
         if value.lower() in ["main", "master"]:
             raise ValueError(
                 "Invalid input for `pull_request_branch` field, "
