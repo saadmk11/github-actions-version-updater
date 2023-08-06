@@ -38,7 +38,7 @@ class CustomEnvSettingsSource(EnvSettingsSource):
     def prepare_field_value(
         self, field_name: str, field: FieldInfo, value: Any, value_is_complex: bool
     ) -> Any:
-        if field_name in [
+        if value and field_name in [
             "ignore_actions",
             "pull_request_user_reviewers",
             "pull_request_team_reviewers",
@@ -46,8 +46,6 @@ class CustomEnvSettingsSource(EnvSettingsSource):
             "release_types",
             "extra_workflow_locations",
         ]:
-            if not value:
-                return None
             if value.startswith("[") and value.endswith("]"):
                 return frozenset(json.loads(value))
             return frozenset(s.strip() for s in value.strip().split(",") if s)
