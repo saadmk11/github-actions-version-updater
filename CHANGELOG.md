@@ -1,3 +1,13 @@
+# Version: v0.8.0
+
+* [#73](https://github.com/saadmk11/github-actions-version-updater/pull/73): [pre-commit.ci] pre-commit autoupdate
+* [#80](https://github.com/saadmk11/github-actions-version-updater/pull/80): [pre-commit.ci] pre-commit autoupdate
+* [#82](https://github.com/saadmk11/github-actions-version-updater/pull/82): Update changelog-ci.yaml
+* [#83](https://github.com/saadmk11/github-actions-version-updater/pull/83): Set Created Pull Request Number as Action Output
+* [#84](https://github.com/saadmk11/github-actions-version-updater/pull/84): Warn users when GitHub Release do not use Semantic Versioning specification
+* [#85](https://github.com/saadmk11/github-actions-version-updater/pull/85): Manage Dependencies with pip-tools and Migrate to Pydantic V2
+
+
 # Version: v0.7.4
 
 * [#60](https://github.com/saadmk11/github-actions-version-updater/pull/60): [pre-commit.ci] pre-commit autoupdate
