@@ -1,0 +1,7 @@
+packaging==21.3
+
+PyYAML
+requests
+github-action-utils
+pydantic
+pydantic-settings

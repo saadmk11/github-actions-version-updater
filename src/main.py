@@ -1,4 +1,3 @@
-import pprint
 from collections.abc import Generator
 from functools import cache, cached_property
 from typing import Any
@@ -473,7 +472,7 @@ if __name__ == "__main__":
         action_environment = ActionEnvironment()
 
         gha_utils.echo("Using Configuration:")
-        gha_utils.echo(pprint.pformat(user_configuration.dict(exclude={"token"})))
+        gha_utils.echo(user_configuration.model_dump_json(exclude={"token"}, indent=4))
 
     # Configure Git Safe Directory
     configure_safe_directory(action_environment.workspace)
