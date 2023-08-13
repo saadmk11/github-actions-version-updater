@@ -173,7 +173,7 @@ class GitHubActionsVersionUpdater:
                         updated_workflow_data = re.sub(
                             rf"({action})(\s+|$)",
                             rf"{updated_action}\2",
-                            file_data,
+                            updated_workflow_data,
                             0,
                             re.MULTILINE,
                         )
