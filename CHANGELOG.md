@@ -1,3 +1,8 @@
+# Version: v0.8.1
+
+* [#89](https://github.com/saadmk11/github-actions-version-updater/pull/89): Use `regex.sub` to replace old versions with new ones
+
+
 # Version: v0.8.0
 
 * [#73](https://github.com/saadmk11/github-actions-version-updater/pull/73): [pre-commit.ci] pre-commit autoupdate
