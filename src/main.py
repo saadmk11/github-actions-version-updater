@@ -1,3 +1,4 @@
+import re
 from collections.abc import Generator
 from functools import cache, cached_property
 from typing import Any
@@ -169,8 +170,12 @@ class GitHubActionsVersionUpdater:
                         gha_utils.echo(
                             f'Updating "{action}" with "{updated_action}"...'
                         )
-                        updated_workflow_data = updated_workflow_data.replace(
-                            action, updated_action
+                        updated_workflow_data = re.sub(
+                            rf"({action})(\s+|$)",
+                            rf"{updated_action}\2",
+                            file_data,
+                            0,
+                            re.MULTILINE,
                         )
                     else:
                         gha_utils.echo(f'No updates found for "{action_repository}"')
@@ -213,7 +218,9 @@ class GitHubActionsVersionUpdater:
                 f"branch on {version_data['commit_date']}\n"
             )
 
-    def _get_github_releases(self, action_repository: str) -> list[dict[str, Any]]:
+    def _get_github_releases(
+        self, action_repository: str
+    ) -> list[dict[str, str | Version | LegacyVersion]]:
         """Get the GitHub releases using GitHub API"""
         url = f"{self.github_api_url}/repos/{action_repository}/releases?per_page=50"
 
@@ -261,22 +268,23 @@ class GitHubActionsVersionUpdater:
         checks = []
 
         if ReleaseType.MAJOR in self.user_config.release_types:
-            checks.append(lambda r, c: r["tag_name_parsed"].major > c.major)
+            checks.append(lambda r, c: r.major > c.major)
 
         if ReleaseType.MINOR in self.user_config.release_types:
             checks.append(
-                lambda r, c: r["tag_name_parsed"].major == c.major
-                and r["tag_name_parsed"].minor > c.minor,
+                lambda r, c: r.major == c.major and r.minor > c.minor,
             )
 
         if ReleaseType.PATCH in self.user_config.release_types:
             checks.append(
-                lambda r, c: r["tag_name_parsed"].major == c.major
-                and r["tag_name_parsed"].minor == c.minor
-                and r["tag_name_parsed"].micro > c.micro
+                lambda r, c: r.major == c.major
+                and r.minor == c.minor
+                and r.micro > c.micro
             )
 
-        def filter_func(release_tag: str, current_version: Version) -> bool:
+        def filter_func(
+            release_tag: LegacyVersion | Version, current_version: Version
+        ) -> bool:
             return any(check(release_tag, current_version) for check in checks)
 
         return filter_func
@@ -305,7 +313,7 @@ class GitHubActionsVersionUpdater:
                 latest_release = next(
                     filter(
                         lambda r: self._release_filter_function(
-                            r, parsed_current_version
+                            r["tag_name_parsed"], parsed_current_version
                         ),
                         github_releases,
                     ),
