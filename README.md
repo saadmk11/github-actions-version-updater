@@ -63,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           # [Required] Access token with `workflow` scope.
           token: ${{ secrets.WORKFLOW_SECRET }}
@@ -114,7 +114,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           # [Required] Access token with `workflow` scope.
           token: ${{ secrets.WORKFLOW_SECRET }}
@@ -180,7 +180,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           token: ${{ secrets.WORKFLOW_SECRET }}
           lfs: false
@@ -223,7 +223,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           # [Required] Access token with `workflow` scope.
           token: ${{ secrets.WORKFLOW_SECRET }}
