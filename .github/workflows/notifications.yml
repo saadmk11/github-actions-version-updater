@@ -27,4 +27,4 @@ jobs:
           job: ${{ toJson(job) }}
           steps: ${{ toJson(steps) }}
           webhook_url: ${{ secrets.TEAMS_WEBHOOK_PR_NOTIFICATION_URL }}
-          overwrite: "{	title: `New PR opened`,	sections: [{activityTitle: `PR opened in: ${{ github.repository }}`,facts: [{	name: `Opened by`,value: `${{ steps.email.outputs.email }}`	}],	markdown: true}] }"
+          overwrite: "{	title: `New PR opened : {{ github.event.pull_request.title }}`,	sections: [{activityTitle: `PR opened in: ${{ github.repository }}\nsource branch: ${{ github.head_ref }}\ntarget branch : ${{ github.base_ref}} \n`,facts: [{	name: `Opened by`,value: `${{ steps.email.outputs.email }}`	}],	markdown: true}] }"
