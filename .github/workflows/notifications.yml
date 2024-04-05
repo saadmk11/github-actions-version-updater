@@ -28,7 +28,7 @@ jobs:
           echo "email=$(git log -1 --format='%ae' | cut -d '@' -f1 | cut -d '+' -f2)" >> $GITHUB_OUTPUT
       - name: Teams notification for notifications
         if: |
-          contains(toJson(github.event.pull_request.labels.*.name), 'automerge')
+          contains(toJson(github.event.pull_request.labels.*.name), 'automerge') || contains(github.event.pull_request.title, 'sync: synced file(s) with avnet-embedded/ci-automation')
         uses: skitionek/notify-microsoft-teams@v1.0.8
         with:
           job: ${{ toJson(job) }}
