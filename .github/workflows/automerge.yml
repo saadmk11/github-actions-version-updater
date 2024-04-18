@@ -34,7 +34,7 @@ jobs:
           contains(toJson(github.event.pull_request.labels.*.name), 'automerge')
         with:
           github-token: ${{ secrets.DISPATCH_PAT }}
-      - uses: "pascalgn/automerge-action@v0.16.2"
+      - uses: "pascalgn/automerge-action@v0.16.3"
         name: auto_merge
         env:
           GITHUB_TOKEN: "${{ secrets.DISPATCH_PAT }}"
