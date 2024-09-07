@@ -171,7 +171,7 @@ class GitHubActionsVersionUpdater:
                             f'Updating "{action}" with "{updated_action}"...'
                         )
                         updated_workflow_data = re.sub(
-                            rf"({action})(\s+|$)",
+                            rf"({action})(\s+['\"]?|['\"]?$)",
                             rf"{updated_action}\2",
                             updated_workflow_data,
                             0,
