@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: (C) 2024 Avnet Embedded GmbH
 # SPDX-License-Identifier: GPL-3.0-only
 
+---
 name: Notifications in teams for each PR
 
 on:
@@ -11,7 +12,7 @@ on:
 
 concurrency:
   group: ${{ github.event.pull_request.id }}
-  cancel-in-progress: true 
+  cancel-in-progress: true
 
 jobs:
   auto_merge:
