@@ -20,7 +20,7 @@ jobs:
     name: pr_notifications
     steps:
       - name: Checks out repository
-        uses: actions/checkout@v4.2.1
+        uses: actions/checkout@v4.2.2
         with:
           fetch-depth: 0
       - name: get email address
