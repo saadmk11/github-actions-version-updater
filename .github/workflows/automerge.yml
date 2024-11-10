@@ -15,28 +15,35 @@ on:
       - ready_for_review
       - reopened
       - unlocked
-  pull_request_review:
-    types:
-      - submitted
-  check_suite:
-    types:
-      - completed
 
 jobs:
   auto_merge:
-    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    if: |
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      contains(toJson(github.event.pull_request.labels.*.name), 'automerge')
     runs-on: ubuntu-latest
     name: auto_merge
     permissions:
       pull-requests: write
+      checks: read
     steps:
+      - name: Get Status of current ref
+        id: get-status
+        uses: poseidon/wait-for-status-checks@v0.6.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ignore: "auto_merge,pr_notifications"
+          delay: 30s
+          timeout: 21600s
+
       - uses: hmarr/auto-approve-action@v4.0.0
         name: auto_approve
-        if: |
-          contains(toJson(github.event.pull_request.labels.*.name), 'automerge')
+        if: success()
         with:
           github-token: ${{ secrets.DISPATCH_PAT }}
+
       - uses: "pascalgn/automerge-action@v0.16.4"
+        if: success()
         name: auto_merge
         env:
           GITHUB_TOKEN: "${{ secrets.DISPATCH_PAT }}"

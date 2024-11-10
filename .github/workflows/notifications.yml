@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  auto_merge:
+  pr_notifications:
     runs-on: ubuntu-latest
     name: pr_notifications
     steps:
