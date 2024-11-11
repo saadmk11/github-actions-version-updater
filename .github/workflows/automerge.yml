@@ -45,12 +45,12 @@ jobs:
 
       - uses: hmarr/auto-approve-action@v4.0.0
         name: auto_approve
-        if: ${{ steps.conditions.outputs.applicable }} && success()
+        if: ${{ steps.conditions.outputs.applicable }}
         with:
           github-token: ${{ secrets.DISPATCH_PAT }}
 
       - uses: "pascalgn/automerge-action@v0.16.4"
-        if: ${{ steps.conditions.outputs.applicable }} && success()
+        if: ${{ steps.conditions.outputs.applicable }}
         name: auto_merge
         env:
           GITHUB_TOKEN: "${{ secrets.DISPATCH_PAT }}"
