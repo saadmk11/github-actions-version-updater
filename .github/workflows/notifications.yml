@@ -7,12 +7,7 @@ name: Notifications in teams for each PR
 on:
   pull_request:
     types:
-      - opened
       - labeled
-
-concurrency:
-  group: ${{ github.event.pull_request.id }}
-  cancel-in-progress: true
 
 jobs:
   pr_notifications:
@@ -23,10 +18,12 @@ jobs:
         uses: actions/checkout@v4.2.2
         with:
           fetch-depth: 0
+
       - name: get email address
         id: email
         run: |
           echo "email=$(git log -1 --format='%ae' | cut -d '@' -f1 | cut -d '+' -f2)" >> $GITHUB_OUTPUT
+
       - name: Teams notification for notifications
         if: |
           contains(toJson(github.event.pull_request.labels.*.name), 'automerge') || contains(github.event.pull_request.title, 'sync: synced file(s) with avnet-embedded/ci-automation')

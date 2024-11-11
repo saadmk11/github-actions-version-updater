@@ -18,17 +18,24 @@ on:
 
 jobs:
   auto_merge:
-    if: |
-      github.event.pull_request.user.login != 'dependabot[bot]' &&
-      contains(toJson(github.event.pull_request.labels.*.name), 'automerge')
     runs-on: ubuntu-latest
     name: auto_merge
     permissions:
       pull-requests: write
       checks: read
     steps:
+      - name: Check conditions
+        id: conditions
+        if: |
+          github.event.pull_request.user.login != 'dependabot[bot]' &&
+          contains(toJson(github.event.pull_request.labels.*.name), 'automerge')
+        run: |
+          echo "applicable=true" >> $GITHUB_OUTPUT
+        shell: bash
+
       - name: Get Status of current ref
         id: get-status
+        if: ${{ steps.conditions.outputs.applicable }}
         uses: poseidon/wait-for-status-checks@v0.6.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -38,12 +45,12 @@ jobs:
 
       - uses: hmarr/auto-approve-action@v4.0.0
         name: auto_approve
-        if: success()
+        if: ${{ steps.conditions.outputs.applicable }} && success()
         with:
           github-token: ${{ secrets.DISPATCH_PAT }}
 
       - uses: "pascalgn/automerge-action@v0.16.4"
-        if: success()
+        if: ${{ steps.conditions.outputs.applicable }} && success()
         name: auto_merge
         env:
           GITHUB_TOKEN: "${{ secrets.DISPATCH_PAT }}"
