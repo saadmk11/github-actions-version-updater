@@ -40,7 +40,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           ignore: "auto_merge,pr_notifications"
-          delay: 30s
+          delay: 20s
           timeout: 21600s
 
       - uses: hmarr/auto-approve-action@v4.0.0
