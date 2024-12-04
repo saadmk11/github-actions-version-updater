@@ -140,6 +140,10 @@ class GitHubActionsVersionUpdater:
                             f'{action_repository}@{latest_release["tag_name"]}'
                         )
 
+                        if updated_action in self.ignore_actions:
+                            print_message((f'Action "{updated_action}" in ignore list. Skipping'))
+                            continue
+
                         if action != updated_action:
                             print_message(
                                 f'Found new version for "{action_repository}"'
