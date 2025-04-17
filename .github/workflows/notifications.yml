@@ -27,7 +27,7 @@ jobs:
       - name: Teams notification for notifications
         if: |
           contains(toJson(github.event.pull_request.labels.*.name), 'automerge') || contains(github.event.pull_request.title, 'sync: synced file(s) with avnet-embedded/ci-automation')
-        uses: skitionek/notify-microsoft-teams@v1.0.9
+        uses: skitionek/notify-microsoft-teams@v1.0.8
         with:
           job: ${{ toJson(job) }}
           steps: ${{ toJson(steps) }}
