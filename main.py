@@ -14,7 +14,7 @@ class GitHubActionsVersionUpdater:
 
     github_api_url = 'https://api.github.com'
     github_url = 'https://github.com/'
-    action_label = 'uses'
+    action_label = ['uses', 'action']
 
     def __init__(self, repository, base_branch, token, paths, workspace, commit_message=None, pr_title=None, ignore_actions=None):
         self.repository = repository
@@ -287,7 +287,7 @@ class GitHubActionsVersionUpdater:
         """Recursively get all action names from config"""
         if isinstance(config, dict):
             for key, value in config.items():
-                if key == self.action_label:
+                if key in self.action_label:
                     yield value
                 elif isinstance(value, dict) or isinstance(value, list):
                     for item in self.get_all_actions(value):
