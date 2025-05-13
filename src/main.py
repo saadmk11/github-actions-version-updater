@@ -31,7 +31,7 @@ class GitHubActionsVersionUpdater:
 
     github_api_url = "https://api.github.com"
     github_url = "https://github.com/"
-    workflow_action_key = "uses"
+    workflow_action_key = ["uses", "action"]
 
     def __init__(self, env: ActionEnvironment, user_config: Configuration):
         self.env = env
@@ -464,7 +464,7 @@ class GitHubActionsVersionUpdater:
         """Recursively get all action names from workflow data"""
         if isinstance(data, dict):
             for key, value in data.items():
-                if key == self.workflow_action_key:
+                if key in self.workflow_action_key:
                     yield value
                 elif isinstance(value, dict) or isinstance(value, list):
                     yield from self._get_all_actions(value)
