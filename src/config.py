@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import glob
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -151,20 +152,22 @@ class Configuration(BaseSettings):
         workflow_file_paths = []
 
         for workflow_location in value:
-            if os.path.isdir(workflow_location):
-                workflow_file_paths.extend(
-                    [str(path) for path in Path(workflow_location).rglob("*.y*ml")]
-                )
-            elif os.path.isfile(workflow_location):
-                if workflow_location.endswith(".yml") or workflow_location.endswith(
-                    ".yaml"
-                ):
-                    workflow_file_paths.append(workflow_location)
-            else:
-                gha_utils.warning(
-                    f"Skipping '{workflow_location}' "
-                    "as it is not a valid file or directory"
-                )
+            paths_glob = glob.glob(workflow_location)
+            for path_glob in paths_glob:
+                if os.path.isdir(path_glob):
+                    workflow_file_paths.extend(
+                        [str(path) for path in Path(path_glob).rglob("*.y*ml")]
+                    )
+                elif os.path.isfile(path_glob):
+                    if path_glob.endswith(".yml") or path_glob.endswith(
+                        ".yaml"
+                    ):
+                        workflow_file_paths.append(path_glob)
+                else:
+                    gha_utils.warning(
+                        f"Skipping '{path_glob}' "
+                        "as it is not a valid file or directory"
+                    )
 
         return frozenset(workflow_file_paths)
 
