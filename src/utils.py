@@ -42,7 +42,7 @@ def create_pull_request(
         if response.status_code == 201:
             response_data = response.json()
             gha_utils.notice(
-                f"Pull request opened at {response_data['html_url']} \U0001F389"
+                f"Pull request opened at {response_data['html_url']} \U0001f389"
             )
             return response_data["number"]
 
@@ -94,7 +94,7 @@ def add_pull_request_reviewers(
             gha_utils.notice(
                 "Requested review from "
                 f"{pull_request_user_reviewers.union(pull_request_team_reviewers)} "
-                "\U0001F389"
+                "\U0001f389"
             )
             return
 
@@ -130,7 +130,7 @@ def add_pull_request_labels(
         if response.status_code == 200:
             gha_utils.notice(
                 f"Added '{labels}' labels to "
-                f"pull request #{pull_request_number} \U0001F389"
+                f"pull request #{pull_request_number} \U0001f389"
             )
             return
 
@@ -167,8 +167,8 @@ def display_whats_new() -> None:
         latest_release_body = response_data["body"]
 
         group_title = (
-            "\U0001F389 What's New In "
-            f"GitHub Actions Version Updater {latest_release_tag} \U0001F389"
+            "\U0001f389 What's New In "
+            f"GitHub Actions Version Updater {latest_release_tag} \U0001f389"
         )
 
         with gha_utils.group(group_title):
