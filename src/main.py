@@ -107,7 +107,7 @@ class GitHubActionsVersionUpdater:
                 )
                 raise SystemExit(1)
         else:
-            gha_utils.notice("Everything is up-to-date! \U0001F389 \U0001F389")
+            gha_utils.notice("Everything is up-to-date! \U0001f389 \U0001f389")
 
     def _update_workflow(self, workflow_path: str) -> set[str]:
         """Update the workflow file with the updated data"""
