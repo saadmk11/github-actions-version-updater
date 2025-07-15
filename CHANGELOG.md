@@ -1,3 +1,12 @@
+# Version: v0.9.0
+
+* [#92](https://github.com/saadmk11/github-actions-version-updater/pull/92): [pre-commit.ci] pre-commit autoupdate
+* [#100](https://github.com/saadmk11/github-actions-version-updater/pull/100): Update README.md - update checkout versions
+* [#106](https://github.com/saadmk11/github-actions-version-updater/pull/106): Fix the actions enclosed in quotes are not updated
+* [#115](https://github.com/saadmk11/github-actions-version-updater/pull/115): Base on 3.12-slim-bullseye
+* [#116](https://github.com/saadmk11/github-actions-version-updater/pull/116): Update changelog-ci version
+
+
 # Version: v0.8.1
 
 * [#89](https://github.com/saadmk11/github-actions-version-updater/pull/89): Use `regex.sub` to replace old versions with new ones
