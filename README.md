@@ -158,6 +158,7 @@ You need to create a classic Personal Access Token with these scopes:
 You need to create a Fine-grained Personal Access Token with these Repository permissions:
 
 - `Contents: Read and write`  (To Push Changes to the Repository)
+- `Actions: Read` (To Read Actions)
 - `Workflows: Read and write`  (To Update GitHub Action workflow files)
 - `Pull requests: Read and write`  (To Create Pull Requests)
 - `Metadata: Read-only`  (Required by Above Permissions)
