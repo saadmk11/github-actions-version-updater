@@ -1,6 +1,8 @@
 version: 2
 updates:
-  - package-ecosystem: "pip"
+  # Action pins are updated by .github/workflows/update-actions.yaml.
+  # Dependabot's github-actions ecosystem would open conflicting PRs.
+  - package-ecosystem: "uv"
     directory: "/"
     groups:
        dependencies:

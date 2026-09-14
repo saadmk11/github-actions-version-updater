@@ -1,5 +1,5 @@
 name: GitHub Actions Version Updater
-description: GitHub Actions Version Updater updates GitHub Action versions in a repository and creates a pull request with the changes.
+description: Scan workflow files, bump outdated GitHub Action pins, and open a pull request with the changes.
 author: Maksudul Haque
 branding:
   icon: 'upload-cloud'
@@ -61,6 +61,97 @@ inputs:
     required: false
     default: ''
 
+outputs:
+  GHA_UPDATE_PR_NUMBER:
+    description: The number of the created pull request.
+    value: ${{ steps.pull-request.outputs.GHA_UPDATE_PR_NUMBER }}
+  pull-request-number:
+    description: The number of the created pull request.
+    value: ${{ steps.pull-request.outputs.pull-request-number }}
+
 runs:
-  using: 'docker'
-  image: 'Dockerfile'
+  using: composite
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      with:
+        enable-cache: true
+        python-version: "3.14"
+
+    - name: Install updater from this action
+      shell: bash
+      env:
+        UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/gha-update
+      run: |
+        uv sync --project "${{ github.action_path }}" --frozen --no-dev --no-editable --extra action
+        echo "${{ runner.temp }}/gha-update/bin" >> "${GITHUB_PATH}"
+
+    - name: Update GitHub Action versions
+      id: update
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        INPUT_IGNORE: ${{ inputs.ignore }}
+        INPUT_UPDATE_VERSION_WITH: ${{ inputs.update_version_with }}
+        INPUT_RELEASE_TYPES: ${{ inputs.release_types }}
+        INPUT_EXTRA_WORKFLOW_LOCATIONS: ${{ inputs.extra_workflow_locations }}
+        GHA_UPDATE_PR_BODY_FILE: ${{ runner.temp }}/gha-update-pr-body.md
+      run: |
+        args=(
+          --pr-body-file "${GHA_UPDATE_PR_BODY_FILE}"
+          --update-version-with "${INPUT_UPDATE_VERSION_WITH}"
+          --release-types "${INPUT_RELEASE_TYPES}"
+        )
+        if [ -n "${INPUT_IGNORE}" ]; then
+          args+=(--ignore "${INPUT_IGNORE}")
+        fi
+        if [ -n "${INPUT_EXTRA_WORKFLOW_LOCATIONS}" ]; then
+          args+=(--extra-workflow-locations "${INPUT_EXTRA_WORKFLOW_LOCATIONS}")
+        fi
+        gha-update "${args[@]}"
+
+    - name: Fail when updates exist and pull request is skipped
+      if: ${{ contains(fromJSON('["true", "True", "TRUE", "1"]'), inputs.skip_pull_request) }}
+      shell: bash
+      run: |
+        if git diff --quiet && git diff --cached --quiet; then
+          echo "Everything is up-to-date."
+          exit 0
+        fi
+        {
+          echo "### GitHub Actions Version Updates"
+          echo
+          echo "Updates found but skipping pull request."
+          echo
+          echo "<details><summary>Git Diff</summary>"
+          echo
+          echo '```diff'
+          git diff
+          echo '```'
+          echo
+          echo "</details>"
+        } >> "${GITHUB_STEP_SUMMARY}"
+        echo "::error::Updates found but skipping pull request. Checkout build summary for update details."
+        exit 1
+
+    - name: Create pull request
+      id: pull-request
+      if: ${{ !contains(fromJSON('["true", "True", "TRUE", "1"]'), inputs.skip_pull_request) }}
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        GHA_UPDATE_COMMITTER_USERNAME: ${{ inputs.committer_username }}
+        GHA_UPDATE_COMMITTER_EMAIL: ${{ inputs.committer_email }}
+        GHA_UPDATE_COMMIT_MESSAGE: ${{ inputs.commit_message }}
+        GHA_UPDATE_PULL_REQUEST_TITLE: ${{ inputs.pull_request_title }}
+        GHA_UPDATE_PULL_REQUEST_BRANCH: ${{ inputs.pull_request_branch }}
+        GHA_UPDATE_PULL_REQUEST_USER_REVIEWERS: ${{ inputs.pull_request_user_reviewers }}
+        GHA_UPDATE_PULL_REQUEST_TEAM_REVIEWERS: ${{ inputs.pull_request_team_reviewers }}
+        GHA_UPDATE_PULL_REQUEST_LABELS: ${{ inputs.pull_request_labels }}
+        GHA_UPDATE_PR_BODY_FILE: ${{ runner.temp }}/gha-update-pr-body.md
+      run: |
+        if git diff --quiet && git diff --cached --quiet; then
+          echo "Everything is up-to-date."
+          exit 0
+        fi
+        gha-update-pr

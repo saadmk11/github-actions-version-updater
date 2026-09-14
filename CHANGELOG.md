@@ -1,3 +1,19 @@
+# Version: v1.0.0
+
+* First stable release of the installable `gha-update` package (`pip install gha-update`, `import gha_update`) and composite action.
+* Git commit / pull-request helpers ship as the optional ``action`` extra (GitPython) and the ``gha-update-pr`` command.
+* Action pins are updated by `.github/workflows/update-actions.yaml`. Dependabot only tracks Python (`uv`) dependencies.
+* Composite action HTTP uses `requests` (same client as the CLI).
+* Require Python 3.12–3.14.
+
+# Version: v0.10.0
+
+* Split the project into an installable `gha-update` CLI and a composite GitHub Action.
+* Remove the Docker runtime. The action installs the package from the action checkout with uv.
+* Git commit / pull-request logic lives in `action/` and is not part of the published package.
+* Add Trusted Publishing workflow for PyPI (`.github/workflows/release.yaml`).
+* Support Python 3.12–3.14.
+
 # Version: v0.9.0
 
 * [#92](https://github.com/saadmk11/github-actions-version-updater/pull/92): [pre-commit.ci] pre-commit autoupdate
