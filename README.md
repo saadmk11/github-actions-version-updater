@@ -4,7 +4,6 @@
 [![License](https://img.shields.io/github/license/saadmk11/github-actions-version-updater?style=flat-square)](LICENSE)
 [![GitHub Marketplace](https://img.shields.io/badge/Get%20It-on%20Marketplace-orange?style=flat-square)](https://github.com/marketplace/actions/github-actions-version-updater)
 [![PyPI](https://img.shields.io/pypi/v/update-gha?style=flat-square)](https://pypi.org/project/update-gha/)
-[![CI](https://img.shields.io/github/actions/workflow-status/saadmk11/github-actions-version-updater/ci.yaml?label=CI&style=flat-square)](https://github.com/saadmk11/github-actions-version-updater/actions/workflows/ci.yaml)
 
 Scans workflow YAML for `uses:` pins, asks GitHub for a newer release tag, release commit, or default-branch SHA, and rewrites only the version token. Quotes, comments, and line endings stay as they are. Run it as a scheduled Action that opens a pull request, or as the `update-gha` CLI on your machine.
 
