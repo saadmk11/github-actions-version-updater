@@ -10,7 +10,7 @@ Scans workflow YAML for `uses:` pins, asks GitHub for a newer release tag, relea
 | | [GitHub Action](#github-action) | [Python package](#python-package) |
 | --- | --- | --- |
 | **Use this when** | You want a scheduled job that opens a pull request | You want a CLI on your machine or in other CI |
-| **Add it with** | `uses: saadmk11/github-actions-version-updater@v1.0.0` | `pip install update-gha` or `uvx update-gha` |
+| **Add it with** | `uses: saadmk11/github-actions-version-updater@v1.0.1` | `pip install update-gha` or `uvx update-gha` |
 | **Pull requests** | Opened by default | Optional (`--pull-request`) |
 
 The Marketplace listing and GitHub repo are **github-actions-version-updater**. The PyPI project is **[update-gha](https://pypi.org/project/update-gha/)**. Same updater, two ways to run it.
@@ -103,7 +103,7 @@ jobs:
           token: ${{ secrets.WORKFLOW_SECRET }}
 
       - name: Run GitHub Actions Version Updater
-        uses: saadmk11/github-actions-version-updater@v1.0.0
+        uses: saadmk11/github-actions-version-updater@v1.0.1
         with:
           token: ${{ secrets.WORKFLOW_SECRET }}
 ```
@@ -174,7 +174,7 @@ Set only when this run created a pull request. Empty if you skipped the PR, noth
 ```yaml
 - name: Run GitHub Actions Version Updater
   id: update
-  uses: saadmk11/github-actions-version-updater@v1.0.0
+  uses: saadmk11/github-actions-version-updater@v1.0.1
   with:
     token: ${{ secrets.WORKFLOW_SECRET }}
 
@@ -228,7 +228,7 @@ jobs:
           token: ${{ secrets.WORKFLOW_SECRET }}
 
       - name: Run GitHub Actions Version Updater
-        uses: saadmk11/github-actions-version-updater@v1.0.0
+        uses: saadmk11/github-actions-version-updater@v1.0.1
         with:
           token: ${{ secrets.WORKFLOW_SECRET }}
           committer_username: "actions-bot"
@@ -251,7 +251,7 @@ Writes the files, prints a diff, and fails the job if anything changed. Use this
 
 ```yaml
 - name: Run GitHub Actions Version Updater
-  uses: saadmk11/github-actions-version-updater@v1.0.0
+  uses: saadmk11/github-actions-version-updater@v1.0.1
   with:
     token: ${{ secrets.WORKFLOW_SECRET }}
     skip_pull_request: "true"
@@ -272,7 +272,7 @@ If the repository uses [Git LFS](https://git-lfs.github.com/), check out with `l
     rm -f .git/hooks/post-checkout .git/hooks/pre-push
 
 - name: Run GitHub Actions Version Updater
-  uses: saadmk11/github-actions-version-updater@v1.0.0
+  uses: saadmk11/github-actions-version-updater@v1.0.1
   with:
     token: ${{ secrets.WORKFLOW_SECRET }}
 ```

@@ -1,6 +1,9 @@
 # Unreleased
 
+# Version: v1.0.1
+
 * [#74](https://github.com/saadmk11/github-actions-version-updater/issues/74): When `update_version_with` is `release-commit-sha`, write the matching release tag as an inline `# tag` comment (exactly two spaces before `#`) so SHA-to-SHA diffs stay human-readable. Version-like comments are updated; custom comments are left alone.
+* [#125](https://github.com/saadmk11/github-actions-version-updater/pull/125): Document classic and fine-grained personal access token permissions.
 
 # Version: v1.0.0
 
