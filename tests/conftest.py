@@ -19,6 +19,26 @@ def _never_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("time.sleep", lambda _seconds: None)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_github_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep GitHub Actions job env from leaking into Configuration and logging."""
+    for name in (
+        "GITHUB_ACTIONS",
+        "GITHUB_REF",
+        "GITHUB_REF_NAME",
+        "GITHUB_BASE_REF",
+        "GITHUB_OUTPUT",
+        "GITHUB_REPOSITORY",
+        "GITHUB_TOKEN",
+        "GITHUB_STEP_SUMMARY",
+        "FORCE_COLOR",
+        "CLICOLOR_FORCE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setenv("COLUMNS", "200")
+
+
 class FakeResponse:
     def __init__(
         self,
