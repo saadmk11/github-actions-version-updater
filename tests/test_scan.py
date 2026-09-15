@@ -16,12 +16,14 @@ from tests.conftest import (
 from update_gha.config import Configuration
 from update_gha.github import GitHubAPIError, GitHubClient
 from update_gha.models import (
+    CommitInfo,
     ReleaseInfo,
     ReleaseType,
     ResolvedVersion,
     UpdateVersionWith,
 )
 from update_gha.scan import (
+    _release_tag_comment,
     _split_action,
     _write_text_preserving_newlines,
     run_update,
@@ -62,6 +64,9 @@ class RaisingLookup(FakeLookup):
         )
 
 
+CHECKOUT_SHA = "11bd71901bbe5b1630ceea73d27597364c9af683"
+
+
 def _checkout_v4() -> ResolvedVersion:
     return ResolvedVersion(
         version="v4",
@@ -69,6 +74,22 @@ def _checkout_v4() -> ResolvedVersion:
             tag_name="v4",
             html_url="https://github.com/actions/checkout/releases/tag/v4",
             published_at="2024-01-01T00:00:00Z",
+        ),
+    )
+
+
+def _checkout_sha(tag: str = "v4.2.2") -> ResolvedVersion:
+    return ResolvedVersion(
+        version=CHECKOUT_SHA,
+        release=ReleaseInfo(
+            tag_name=tag,
+            html_url=f"https://github.com/actions/checkout/releases/tag/{tag}",
+            published_at="2024-01-01T00:00:00Z",
+        ),
+        commit=CommitInfo(
+            sha=CHECKOUT_SHA,
+            url=f"https://github.com/actions/checkout/commit/{CHECKOUT_SHA}",
+            date="2024-01-01T00:00:00Z",
         ),
     )
 
@@ -432,3 +453,208 @@ def test_unreadable_file_is_skipped(
     assert "actions/checkout@v3" in blocked.read_text(encoding="utf-8")
     assert "actions/checkout@v4" in good.read_text(encoding="utf-8")
     assert report.has_updates is True
+
+
+def test_release_commit_sha_writes_tag_comment(tmp_path: Path) -> None:
+    workflow = write_workflow(tmp_path, "ci.yml", CHECKOUT_V3)
+    report = run_update(
+        Configuration(
+            write=True,
+            update_version_with=UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA,
+        ),
+        reporter=silent_reporter(),
+        client=FakeLookup({("actions/checkout", "v3"): _checkout_sha()}),
+        workspace=tmp_path,
+    )
+    assert workflow.read_text(encoding="utf-8") == (
+        f"jobs:\n  a:\n    steps:\n      - uses: actions/checkout@{CHECKOUT_SHA}"
+        "  # v4.2.2\n"
+    )
+    assert report.has_updates is True
+    assert report.action_updates[0].new_version == CHECKOUT_SHA
+
+
+def test_release_commit_sha_updates_existing_tag_comment(tmp_path: Path) -> None:
+    workflow = write_workflow(
+        tmp_path,
+        "ci.yml",
+        "jobs:\n  a:\n    steps:\n      - uses: actions/checkout@v3  # 0.3.1\n",
+    )
+    run_update(
+        Configuration(
+            write=True,
+            update_version_with=UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA,
+        ),
+        reporter=silent_reporter(),
+        client=FakeLookup({("actions/checkout", "v3"): _checkout_sha("1.0.0")}),
+        workspace=tmp_path,
+    )
+    assert workflow.read_text(encoding="utf-8") == (
+        f"jobs:\n  a:\n    steps:\n      - uses: actions/checkout@{CHECKOUT_SHA}"
+        "  # 1.0.0\n"
+    )
+
+
+def test_release_commit_sha_keeps_custom_comment(tmp_path: Path) -> None:
+    workflow = write_workflow(
+        tmp_path,
+        "ci.yml",
+        "jobs:\n  a:\n    steps:\n      - uses: actions/checkout@v3 # keep me\n",
+    )
+    run_update(
+        Configuration(
+            write=True,
+            update_version_with=UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA,
+        ),
+        reporter=silent_reporter(),
+        client=FakeLookup({("actions/checkout", "v3"): _checkout_sha()}),
+        workspace=tmp_path,
+    )
+    assert workflow.read_text(encoding="utf-8") == (
+        f"jobs:\n  a:\n    steps:\n      - uses: actions/checkout@{CHECKOUT_SHA}"
+        " # keep me\n"
+    )
+
+
+def test_release_tag_mode_does_not_add_comment(tmp_path: Path) -> None:
+    workflow = write_workflow(tmp_path, "ci.yml", CHECKOUT_V3)
+    run_update(
+        Configuration(write=True),
+        reporter=silent_reporter(),
+        client=FakeLookup({("actions/checkout", "v3"): _checkout_v4()}),
+        workspace=tmp_path,
+    )
+    assert workflow.read_text(encoding="utf-8") == (
+        "jobs:\n  a:\n    steps:\n      - uses: actions/checkout@v4\n"
+    )
+
+
+def test_default_branch_sha_does_not_add_comment(tmp_path: Path) -> None:
+    workflow = write_workflow(tmp_path, "ci.yml", CHECKOUT_V3)
+    resolved = ResolvedVersion(
+        version=CHECKOUT_SHA,
+        commit=CommitInfo(sha=CHECKOUT_SHA, url="u", date="d"),
+    )
+    run_update(
+        Configuration(
+            write=True,
+            update_version_with=UpdateVersionWith.DEFAULT_BRANCH_COMMIT_SHA,
+        ),
+        reporter=silent_reporter(),
+        client=FakeLookup({("actions/checkout", "v3"): resolved}),
+        workspace=tmp_path,
+    )
+    assert workflow.read_text(encoding="utf-8") == (
+        f"jobs:\n  a:\n    steps:\n      - uses: actions/checkout@{CHECKOUT_SHA}\n"
+    )
+
+
+def test_stale_tag_comment_on_current_sha_is_replaced(tmp_path: Path) -> None:
+    workflow = write_workflow(
+        tmp_path,
+        "ci.yml",
+        f"jobs:\n  a:\n    steps:\n      - uses: actions/checkout@{CHECKOUT_SHA}"
+        " # v3.5.0\n",
+    )
+    report = run_update(
+        Configuration(
+            write=True,
+            update_version_with=UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA,
+        ),
+        reporter=silent_reporter(),
+        client=FakeLookup(
+            {("actions/checkout", CHECKOUT_SHA): _checkout_sha("v4.2.2")}
+        ),
+        workspace=tmp_path,
+    )
+    assert workflow.read_text(encoding="utf-8") == (
+        f"jobs:\n  a:\n    steps:\n      - uses: actions/checkout@{CHECKOUT_SHA}"
+        "  # v4.2.2\n"
+    )
+    assert report.has_updates is True
+    assert report.action_updates[0].old_version == CHECKOUT_SHA
+    assert report.action_updates[0].new_version == CHECKOUT_SHA
+
+
+def test_current_sha_with_correct_comment_is_unchanged(tmp_path: Path) -> None:
+    original = (
+        f"jobs:\n  a:\n    steps:\n      - uses: actions/checkout@{CHECKOUT_SHA}"
+        "  # v4.2.2\n"
+    )
+    workflow = write_workflow(tmp_path, "ci.yml", original)
+    report = run_update(
+        Configuration(
+            write=True,
+            update_version_with=UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA,
+        ),
+        reporter=silent_reporter(),
+        client=FakeLookup(
+            {("actions/checkout", CHECKOUT_SHA): _checkout_sha("v4.2.2")}
+        ),
+        workspace=tmp_path,
+    )
+    assert workflow.read_text(encoding="utf-8") == original
+    assert report.has_updates is False
+    assert report.action_updates == ()
+
+
+def test_current_sha_without_comment_gets_tag_comment(tmp_path: Path) -> None:
+    workflow = write_workflow(
+        tmp_path,
+        "ci.yml",
+        f"jobs:\n  a:\n    steps:\n      - uses: actions/checkout@{CHECKOUT_SHA}\n",
+    )
+    report = run_update(
+        Configuration(
+            write=True,
+            update_version_with=UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA,
+        ),
+        reporter=silent_reporter(),
+        client=FakeLookup(
+            {("actions/checkout", CHECKOUT_SHA): _checkout_sha("v4.2.2")}
+        ),
+        workspace=tmp_path,
+    )
+    assert workflow.read_text(encoding="utf-8") == (
+        f"jobs:\n  a:\n    steps:\n      - uses: actions/checkout@{CHECKOUT_SHA}"
+        "  # v4.2.2\n"
+    )
+    assert report.has_updates is True
+
+
+def test_release_tag_comment_helper() -> None:
+    sha = _checkout_sha()
+    assert (
+        _release_tag_comment(UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA, sha)
+        == "v4.2.2"
+    )
+    assert _release_tag_comment(UpdateVersionWith.LATEST_RELEASE_TAG, sha) is None
+    assert (
+        _release_tag_comment(
+            UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA,
+            ResolvedVersion(version=CHECKOUT_SHA),
+        )
+        is None
+    )
+    assert (
+        _release_tag_comment(
+            UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA,
+            ResolvedVersion(
+                version=CHECKOUT_SHA,
+                release=ReleaseInfo(tag_name="  ", html_url="u", published_at="p"),
+            ),
+        )
+        is None
+    )
+    assert (
+        _release_tag_comment(
+            UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA,
+            ResolvedVersion(
+                version=CHECKOUT_SHA,
+                release=ReleaseInfo(
+                    tag_name="v4\n.2.2", html_url="u", published_at="p"
+                ),
+            ),
+        )
+        is None
+    )

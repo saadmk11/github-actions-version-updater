@@ -5,7 +5,7 @@
 [![GitHub Marketplace](https://img.shields.io/badge/Get%20It-on%20Marketplace-orange?style=flat-square)](https://github.com/marketplace/actions/github-actions-version-updater)
 [![PyPI](https://img.shields.io/pypi/v/update-gha?style=flat-square)](https://pypi.org/project/update-gha/)
 
-Scans workflow YAML for `uses:` pins, asks GitHub for a newer release tag, release commit, or default-branch SHA, and rewrites only the version token. Quotes, comments, and line endings stay as they are. Run it as a scheduled Action that opens a pull request, or as the `update-gha` CLI on your machine.
+Scans workflow YAML for `uses:` pins, asks GitHub for a newer release tag, release commit, or default-branch SHA, and rewrites only the version token. Quotes, user comments, and line endings stay as they are. SHA pins also get a `# tag` comment so the version stays readable. Run it as a scheduled Action that opens a pull request, or as the `update-gha` CLI on your machine.
 
 | | [GitHub Action](#github-action) | [Python package](#python-package) |
 | --- | --- | --- |
@@ -64,7 +64,8 @@ Like Dependabot, but only for GitHub Actions:
 
 - Finds `uses:` pins in `.github/workflows` and any extra paths you pass
 - Looks up a newer release tag, release commit, or default-branch SHA
-- Rewrites **only** the version token — quotes, comments, and line endings stay as they are
+- Rewrites **only** the version token — quotes, user comments, and line endings stay as they are
+- When pinning a release commit SHA, adds or updates a `# tag` comment so the diff shows a human-readable version
 - Commits the result and opens a pull request (unless you set `skip_pull_request`)
 
 Local actions (`./path`) and container actions (`docker://…`) are not updated.
@@ -117,8 +118,10 @@ jobs:
 | Value | What is written | Example |
 | --- | --- | --- |
 | `release-tag` (default) | Latest published stable release tag | `actions/checkout@v4.2.2` |
-| `release-commit-sha` | Commit that the latest stable tag points at | `actions/checkout@11bd7190…` |
+| `release-commit-sha` | Commit that the latest stable tag points at, plus a `# tag` comment | `actions/checkout@11bd7190…  # v4.2.2` |
 | `default-branch-sha` | Latest commit on the action's default branch | `actions/checkout@11bd7190…` |
+
+A `# tag` comment makes SHA-to-SHA diffs readable (`# v4.1.0` → `# v4.2.2`). The comment is written with two spaces before `#`. If the line already has a version-like comment, it is updated to that form. A human comment such as `# pin for security` is left alone.
 
 ### Release types
 
@@ -281,7 +284,8 @@ If the repository uses [Git LFS](https://git-lfs.github.com/), check out with `l
 [PyPI](https://pypi.org/project/update-gha/) · [Changelog](CHANGELOG.md) · [Issues](https://github.com/saadmk11/github-actions-version-updater/issues)
 
 - Scans `.github/workflows` plus extra files or directories
-- Rewrites only the version token (YAML structure, quotes, comments, and line endings stay)
+- Rewrites only the version token (YAML structure, quotes, user comments, and line endings stay)
+- SHA pins written with `release-commit-sha` get a `# tag` comment (the matching release tag)
 - Three version sources: release tag, release commit SHA, default-branch SHA
 - SemVer filters (`major` / `minor` / `patch`)
 - `--check`, `--dry-run`, `--diff`, `--fail-on-update`, and JSON output
@@ -384,7 +388,7 @@ You can also enable pull-request mode with `GHA_UPDATE_CREATE_PULL_REQUEST=true`
 | --- | --- | --- |
 | `--token` | GitHub token. Required for `--pull-request` and private action repos; optional for public lookups. Also `GITHUB_TOKEN` / `GHA_UPDATE_TOKEN`. | unset |
 | `--ignore` | Comma-separated exact `uses` pins to skip, including the current version. | empty |
-| `--update-version-with` | `release-tag`, `release-commit-sha`, or `default-branch-sha`. | `release-tag` |
+| `--update-version-with` | `release-tag`, `release-commit-sha` (SHA plus a `# tag` comment), or `default-branch-sha`. | `release-tag` |
 | `--release-types` | `major`, `minor`, `patch`, or `all`. No effect on `default-branch-sha`. | `all` |
 | `--extra-workflow-locations` | Extra files or directories, comma-separated. Directories are recursive. | empty |
 | `PATHS` | Extra files or directories as positional arguments. Same role as `--extra-workflow-locations`. | none |

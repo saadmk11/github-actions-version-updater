@@ -81,6 +81,7 @@ def test_help() -> None:
     assert "Required for --pull-request and for private action repos" in output
     assert "Required with --pull-request" in output
     assert "release-tag (default) writes the latest stable tag" in output
+    assert "# tag comment" in output
     assert "Unlike --check, a pending update is not a failure" in output
     assert "update-gha[action]" in output
     assert "OWNER/REPO" in output

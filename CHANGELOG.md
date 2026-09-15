@@ -1,3 +1,7 @@
+# Unreleased
+
+* [#74](https://github.com/saadmk11/github-actions-version-updater/issues/74): When `update_version_with` is `release-commit-sha`, write the matching release tag as an inline `# tag` comment (exactly two spaces before `#`) so SHA-to-SHA diffs stay human-readable. Version-like comments are updated; custom comments are left alone.
+
 # Version: v1.0.0
 
 v1 is a rewrite. The GitHub Action is now a composite Action that installs and runs the ``update-gha`` CLI. Action input *names* are the same. How files are found, how pins are rewritten, and what the runner needs are not.

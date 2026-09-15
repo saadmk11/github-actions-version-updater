@@ -37,7 +37,7 @@ inputs:
     required: false
     default: 'false'
   update_version_with:
-    description: 'Choose the update source: "release-tag" (default), "release-commit-sha", or "default-branch-sha"'
+    description: 'Choose the update source: "release-tag" (default), "release-commit-sha" (SHA plus a # tag comment), or "default-branch-sha"'
     required: false
     default: 'release-tag'
   release_types:

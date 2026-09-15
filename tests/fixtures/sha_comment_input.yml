@@ -1,0 +1,23 @@
+name: SHA comment shapes
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: 'actions/setup-python@v4'
+      - uses: "actions/cache@v3"
+      - uses: actions/setup-node@v3  # v3.8.0
+      - uses: docker/login-action@v3 # 3.0.0
+      - uses: actions/upload-artifact@v3   # v3
+      - uses: "actions/github-script@v6"# v6
+      - uses: actions/labeler@v4  # keep my note
+      - uses: actions/stale@v8 # latest
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: owner/nested/action@v1
+      - uses: org/tool/.github/workflows/ci.yml@v2
+      - uses: ./local
+      - uses: docker://alpine:3
+      - run: echo "actions/checkout@v3"
