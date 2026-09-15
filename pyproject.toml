@@ -1,6 +1,6 @@
 [project]
 name = "update-gha"
-version = "1.0.0"
+version = "1.0.1"
 description = "Find outdated GitHub Actions in workflow YAML and bump each pin to the latest release tag, release commit, or default-branch SHA."
 readme = "README.md"
 license = "MIT"
