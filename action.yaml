@@ -1,5 +1,5 @@
 name: GitHub Actions Version Updater
-description: GitHub Actions Version Updater updates GitHub Action versions in a repository and creates a pull request with the changes.
+description: Scan workflow files, bump outdated GitHub Action pins, and open a pull request with the changes.
 author: Maksudul Haque
 branding:
   icon: 'upload-cloud'
@@ -22,7 +22,7 @@ inputs:
     required: false
     default: 'Update GitHub Action Versions'
   pull_request_branch:
-    description: 'The pull request branch name (If provided, the action will force push to the branch)'
+    description: 'The pull request branch name (If provided, the action will force push to the branch; it cannot equal the base branch)'
     required: false
     default: ''
   ignore:
@@ -33,15 +33,15 @@ inputs:
     description: 'GitHub Personal Access Token with `workflow` scope'
     required: true
   skip_pull_request:
-    description: 'Skip Pull Request creation'
+    description: 'Write updates and fail the step instead of opening a pull request'
     required: false
     default: 'false'
   update_version_with:
-    description: 'Use The Latest Release Tag/Commit SHA or Default Branch Commit SHA to update the actions. options: "release-tag" (default), "release-commit-sha", "default-branch-sha"'
+    description: 'Choose the update source: "release-tag" (default), "release-commit-sha", or "default-branch-sha"'
     required: false
     default: 'release-tag'
   release_types:
-    description: 'A comma separated string of release types (major, minor, patch) to use when updating the actions. By default, all release types are used to update the actions. Only Applicable for "release-tag", "release-commit-sha"'
+    description: 'A comma-separated list of release types (major, minor, patch). Applies to "release-tag" and "release-commit-sha"'
     required: false
     default: 'all'
   pull_request_user_reviewers:
@@ -57,10 +57,79 @@ inputs:
     required: false
     default: ''
   extra_workflow_locations:
-    description: 'A comma separated string of file or directory paths to look for workflows. By default, only the workflow files in the .github/workflows directory are checked updates'
+    description: 'A comma-separated list of extra workflow files or directories. By default, only .github/workflows is checked'
     required: false
     default: ''
 
+outputs:
+  GHA_UPDATE_PR_NUMBER:
+    description: The number of the created pull request.
+    value: ${{ steps.update.outputs.GHA_UPDATE_PR_NUMBER }}
+  pull-request-number:
+    description: The number of the created pull request.
+    value: ${{ steps.update.outputs.pull-request-number }}
+
 runs:
-  using: 'docker'
-  image: 'Dockerfile'
+  using: composite
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      with:
+        version: "0.11.32"
+        enable-cache: true
+
+    - name: Install update-gha from this action
+      shell: bash
+      env:
+        UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/update-gha
+        UV_PYTHON: "3.14"
+      run: |
+        uv sync --project "${{ github.action_path }}" --frozen --no-dev --no-editable --extra action
+
+    - name: Update GitHub Action versions
+      id: update
+      shell: bash
+      env:
+        UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/update-gha
+        UV_PYTHON: "3.14"
+        GITHUB_TOKEN: ${{ inputs.token }}
+        GHA_UPDATE_IGNORE_ACTIONS: ${{ inputs.ignore }}
+        GHA_UPDATE_UPDATE_VERSION_WITH: ${{ inputs.update_version_with }}
+        GHA_UPDATE_RELEASE_TYPES: ${{ inputs.release_types }}
+        GHA_UPDATE_EXTRA_WORKFLOW_LOCATIONS: ${{ inputs.extra_workflow_locations }}
+        GHA_UPDATE_COMMITTER_USERNAME: ${{ inputs.committer_username }}
+        GHA_UPDATE_COMMITTER_EMAIL: ${{ inputs.committer_email }}
+        GHA_UPDATE_COMMIT_MESSAGE: ${{ inputs.commit_message }}
+        GHA_UPDATE_PULL_REQUEST_TITLE: ${{ inputs.pull_request_title }}
+        GHA_UPDATE_PULL_REQUEST_BRANCH: ${{ inputs.pull_request_branch }}
+        GHA_UPDATE_PULL_REQUEST_USER_REVIEWERS: ${{ inputs.pull_request_user_reviewers }}
+        GHA_UPDATE_PULL_REQUEST_TEAM_REVIEWERS: ${{ inputs.pull_request_team_reviewers }}
+        GHA_UPDATE_PULL_REQUEST_LABELS: ${{ inputs.pull_request_labels }}
+        GHA_UPDATE_WRITE: "true"
+        GHA_UPDATE_CHECK: "false"
+        GHA_UPDATE_DRY_RUN: "false"
+        GHA_UPDATE_SHOW_DIFF: "false"
+        GHA_UPDATE_OUTPUT_FORMAT: "text"
+      run: |
+        args=(
+          --ignore "${GHA_UPDATE_IGNORE_ACTIONS}"
+          --update-version-with "${GHA_UPDATE_UPDATE_VERSION_WITH}"
+          --release-types "${GHA_UPDATE_RELEASE_TYPES}"
+          --extra-workflow-locations "${GHA_UPDATE_EXTRA_WORKFLOW_LOCATIONS}"
+          --committer-username "${GHA_UPDATE_COMMITTER_USERNAME}"
+          --committer-email "${GHA_UPDATE_COMMITTER_EMAIL}"
+          --commit-message "${GHA_UPDATE_COMMIT_MESSAGE}"
+          --pull-request-title "${GHA_UPDATE_PULL_REQUEST_TITLE}"
+          --pull-request-branch "${GHA_UPDATE_PULL_REQUEST_BRANCH}"
+          --pull-request-reviewers "${GHA_UPDATE_PULL_REQUEST_USER_REVIEWERS}"
+          --pull-request-teams "${GHA_UPDATE_PULL_REQUEST_TEAM_REVIEWERS}"
+          --pull-request-labels "${GHA_UPDATE_PULL_REQUEST_LABELS}"
+        )
+        update_gha=(uv run --project "${{ github.action_path }}" --no-sync update-gha)
+        skip="${{ inputs.skip_pull_request }}"
+        case "${skip}" in
+          true|True|TRUE|1)
+            exec "${update_gha[@]}" "${args[@]}" --no-pull-request --diff --fail-on-update
+            ;;
+        esac
+        "${update_gha[@]}" "${args[@]}" --pull-request
