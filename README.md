@@ -185,21 +185,65 @@ Set only when this run created a pull request. Empty if you skipped the PR, noth
 
 ### Access token
 
-GitHub's default `${{ secrets.GITHUB_TOKEN }}` cannot push changes to workflow files. Create a [personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens), add it to the repository [Actions secrets](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions), and pass that secret as `token`.
+GitHub's default `${{ secrets.GITHUB_TOKEN }}` cannot push changes to workflow files, even when the job has `contents: write` and `actions: write`. Create a [personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens), store it as a repository [Actions secret](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions), and pass that **same** secret as `token` on **both** `actions/checkout` and this action.
 
-**Classic PAT**
+The token needs two kinds of write access:
 
-- `repo` — push the branch and open the pull request
-- `workflow` — update workflow files
+1. **Repository contents** — create the update branch and `git push`
+2. **Workflow files** — the commit edits `.github/workflows`
 
-**Fine-grained PAT**
+`workflow` / **Workflows** permission alone is not enough. A token that can update workflows still cannot push a branch.
 
-- Contents: Read and write
-- Workflows: Read and write
-- Pull requests: Read and write
-- Metadata: Read-only (granted with the permissions above)
+> [!WARNING]
+> Checkout succeeding does not prove the token can write. Public repositories can be fetched with a read-only token. The failure shows up later as a 403 on `git push`.
 
-Use the **same** secret on `actions/checkout` and on this action so the push uses that credential.
+Use the **same** secret on `actions/checkout` and on this action. Checkout stores that token in the local git config (`persist-credentials` defaults to `true`); this action then runs `git push` with that credential. If checkout uses `${{ secrets.GITHUB_TOKEN }}` and only this action gets the PAT, the push still uses `GITHUB_TOKEN` and fails.
+
+#### Classic PAT (`ghp_…`)
+
+Create a [classic token](https://github.com/settings/tokens) with **both** scopes:
+
+| Scope | Why it is required |
+| --- | --- |
+| `repo` | Push the branch and open the pull request. `public_repo` is enough if the repository is public and you do not want access to private repos. |
+| `workflow` | Allow the commit to change files under `.github/workflows` |
+
+Checking only `workflow` is the usual cause of:
+
+```
+remote: Permission to owner/repo.git denied to <user>.
+fatal: unable to access 'https://github.com/owner/repo/': The requested URL returned error: 403
+```
+
+`repo` without `workflow` authenticates the push, then GitHub rejects the commit with:
+
+```
+refusing to allow a Personal Access Token to create or update workflow
+`.github/workflows/...` without `workflow` scope
+```
+
+#### Fine-grained PAT (`github_pat_…`)
+
+Create a [fine-grained token](https://github.com/settings/personal-access-tokens/new).
+
+**Repository access**
+
+- Resource owner must be the account or organization that owns the repository
+- Choose **Only select repositories** and include this repository, or **All repositories**
+- Do not leave this on **Public repositories (read-only)** — that cannot push
+
+**Repository permissions**
+
+| Permission | Access | Why it is required |
+| --- | --- | --- |
+| Contents | Read and write | `git push` the update branch |
+| Workflows | Read and write | Commit changes to workflow YAML |
+| Pull requests | Read and write | Open the pull request after the push |
+| Metadata | Read-only | Granted automatically with the permissions above |
+
+**Workflows** is not a substitute for **Contents**. Workflows without Contents produces the same `Permission to owner/repo.git denied` 403 as a classic token that is missing `repo`. Contents without Workflows is rejected later with the `without workflow scope` error.
+
+If the token is limited to selected repositories and this repo is not on the list, the push also returns 403. After you rotate or recreate the token, update the repository secret — changing the token on GitHub does not update a secret that already stores the old value.
 
 ### Example workflows
 
