@@ -474,7 +474,7 @@ uv run ruff format .
 
 ### Pre-commit
 
-[`.pre-commit-config.yaml`](.pre-commit-config.yaml) runs end-of-file / whitespace checks, Ruff, and mypy. The Ruff and mypy hooks call `uv run`, so finish **Setup** first. Install [pre-commit](https://pre-commit.com/) separately (it is not in the `dev` group):
+[`.pre-commit-config.yaml`](.pre-commit-config.yaml) runs end-of-file / whitespace checks, Ruff, and mypy. The Ruff and mypy hooks install their own tools, so they work locally and on pre-commit.ci. Install [pre-commit](https://pre-commit.com/) separately (it is not in the `dev` group):
 
 ```bash
 uv tool install pre-commit

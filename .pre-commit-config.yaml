@@ -7,23 +7,27 @@ repos:
       - id: check-case-conflict
       - id: check-merge-conflict
 
-  - repo: local
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.7
     hooks:
       - id: ruff-check
-        name: Ruff lint
-        entry: uv run ruff check --fix
-        language: system
-        types_or: [python, pyi]
-
+        args: [--fix]
       - id: ruff-format
-        name: Ruff format
-        entry: uv run ruff format
-        language: system
-        types_or: [python, pyi]
 
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.3.1
+    hooks:
       - id: mypy
-        name: mypy
-        entry: uv run mypy
-        language: system
+        additional_dependencies:
+          - GitPython>=3.1.44
+          - packaging>=23.2
+          - pydantic>=2.7
+          - pydantic-settings>=2.7
+          - pytest>=8.0
+          - pyyaml>=6.0.1
+          - requests>=2.32.4
+          - typer>=0.12.5
+          - types-pyyaml
+          - types-requests
         pass_filenames: false
         always_run: true
