@@ -1,0 +1,9 @@
+name: Non-ASCII Comments
+on: push
+# ワークフロー定義
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3  # チェックアウト 🚀
+      - uses: actions/setup-python@v4  # Configuración de Python – ñ é ü

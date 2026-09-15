@@ -1,10 +1,10 @@
 version: 2
 updates:
-  - package-ecosystem: "pip"
+  - package-ecosystem: "uv"
     directory: "/"
-    groups:
-       dependencies:
-         patterns:
-            - "*"
     schedule:
       interval: "monthly"
+    groups:
+      dependencies:
+        patterns:
+          - "*"

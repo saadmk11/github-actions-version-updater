@@ -1,0 +1,138 @@
+[project]
+name = "update-gha"
+version = "1.0.0"
+description = "Find outdated GitHub Actions in workflow YAML and bump each pin to the latest release tag, release commit, or default-branch SHA."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Maksudul Haque", email = "saad.mk112@gmail.com" },
+]
+requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Quality Assurance",
+    "Typing :: Typed",
+]
+keywords = [
+    "github-actions",
+    "dependencies",
+    "updater",
+    "cli",
+]
+dependencies = [
+    "packaging>=23.2",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.7",
+    "pyyaml>=6.0.1",
+    "requests>=2.32.4",
+    "typer>=0.12.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/saadmk11/github-actions-version-updater"
+Repository = "https://github.com/saadmk11/github-actions-version-updater"
+Issues = "https://github.com/saadmk11/github-actions-version-updater/issues"
+Changelog = "https://github.com/saadmk11/github-actions-version-updater/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+action = [
+    "GitPython>=3.1.44",
+]
+
+[project.scripts]
+update-gha = "update_gha.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.11.32,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.18",
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "ruff>=0.12",
+    "types-pyyaml",
+    "types-requests",
+]
+
+[tool.uv]
+package = true
+required-version = ">=0.11.32"
+
+[tool.uv.build-backend]
+module-name = "update_gha"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "B",
+    "C4",
+    "E",
+    "F",
+    "I",
+    "RUF",
+    "SIM",
+    "TID",
+    "UP",
+    "W",
+    "YTT",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["update_gha"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = [
+    "-q",
+    "--cov",
+    "--cov-report=term-missing",
+    "--cov-fail-under=100",
+]
+
+[tool.coverage.run]
+branch = true
+source_pkgs = ["update_gha"]
+omit = ["*/__main__.py"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = true
+exclude_lines = [
+    "pragma: no cover",
+    "\\.\\.\\.",
+    "assert_never\\(",
+]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+mypy_path = ["src", "."]
+explicit_package_bases = true
+files = ["src", "tests"]
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+
+[tool.pydantic-mypy]
+init_typed = true

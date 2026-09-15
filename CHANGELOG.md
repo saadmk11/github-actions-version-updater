@@ -1,3 +1,22 @@
+# Version: v1.0.0
+
+v1 is a rewrite. The GitHub Action is now a composite Action that installs and runs the ``update-gha`` CLI. Action input *names* are the same. How files are found, how pins are rewritten, and what the runner needs are not.
+
+**Breaking**
+
+* **No Docker image.** v0 ran in a container. v1 runs on the job with bash and uv; it installs CPython 3.14 into an isolated venv and does not change the job's ``python`` on ``PATH``. Self-hosted runners need bash and outbound network. They do not need Docker.
+* **CLI requires Python 3.12+** if you install ``update-gha`` yourself.
+* **Which workflow files are scanned.** v0 asked the GitHub “list workflows” API (usually the workflows registered on the default branch), then opened those paths plus ``extra_workflow_locations``. v1 never calls that API. It reads ``.github/workflows`` and any extra paths from the checkout. After a normal ``actions/checkout`` of the same commit, the set is the same. It can differ if the checkout is sparse, or if the current branch has workflow files that are not on the default branch (v1 will see those; v0 often would not).
+* **What gets rewritten in a file.** v0 parsed ``uses:`` to decide *which* pins to bump, then ran a regex over the **whole file**. The same ``owner/repo@v3`` string in a comment, a ``run:`` script, or a URL could change too. v1 only edits the ``uses:`` value. Comments and scripts stay as they are. That is usually what you want; it is a break only if you relied on those extra replacements.
+* **What is committed and how named branches are pushed.** v0 ran ``git add .`` and force-pushed named PR branches with ``-f``. v1 stages only the workflow files it changed, and force-pushes named branches with ``--force-with-lease``.
+
+**Added**
+
+* Installable package ``update-gha`` (`pip install update-gha` / `uvx update-gha`).
+* Optional ``update-gha --pull-request`` (needs the ``[action]`` extra, or ``GHA_UPDATE_CREATE_PULL_REQUEST``).
+* Config from CLI flags, then ``GHA_UPDATE_*`` env vars, then ``[tool.update-gha]`` in ``pyproject.toml``.
+* Action output ``GHA_UPDATE_PR_NUMBER`` is unchanged. ``pull-request-number`` is an extra alias.
+
 # Version: v0.9.0
 
 * [#92](https://github.com/saadmk11/github-actions-version-updater/pull/92): [pre-commit.ci] pre-commit autoupdate
