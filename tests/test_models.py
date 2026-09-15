@@ -50,6 +50,49 @@ def test_markdown_line_for_release_tag() -> None:
     )
 
 
+def test_markdown_line_for_release_commit_comment_only() -> None:
+    line = _update(
+        old_version="abc",
+        new_version="abc",
+        resolved=ResolvedVersion(
+            version="abc",
+            release=ReleaseInfo(tag_name="v2", html_url="r", published_at="p"),
+            commit=CommitInfo(sha="a", url="u", date="d"),
+        ),
+        update_version_with=UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA,
+    ).markdown_line()
+    assert line == (
+        "* **[o/r](https://github.com/o/r)** updated the release tag comment "
+        "to **[v2](r)**\n"
+    )
+
+
+def test_text_summary_for_comment_only_sha_pin() -> None:
+    action = _update(
+        location="actions/checkout",
+        old_version="abc",
+        new_version="abc",
+        resolved=ResolvedVersion(
+            version="abc",
+            release=ReleaseInfo(tag_name="v4.2.2", html_url="r", published_at="p"),
+        ),
+        update_version_with=UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA,
+    )
+    report = UpdateReport(
+        files=(
+            FileUpdate(
+                path=Path("ci.yml"),
+                original="old\n",
+                updated="new\n",
+                actions=(action,),
+            ),
+        )
+    )
+    assert report.text_summary() == (
+        "actions/checkout  abc  (v4.2.2)\n\nUpdated 1 actions in 1 files."
+    )
+
+
 def test_markdown_line_for_release_commit() -> None:
     line = _update(
         new_version="abc",

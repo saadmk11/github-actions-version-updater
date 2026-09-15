@@ -60,8 +60,9 @@ UpdateWithOption = Annotated[
         "--update-version-with",
         help=(
             "What replaces each pin. release-tag (default) writes the latest "
-            "stable tag; release-commit-sha writes that tag's commit; "
-            "default-branch-sha writes the tip of the action's default branch."
+            "stable tag; release-commit-sha writes that tag's commit and a "
+            "# tag comment; default-branch-sha writes the tip of the "
+            "action's default branch."
         ),
         metavar="SOURCE",
         rich_help_panel=_UPDATE,

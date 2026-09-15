@@ -30,6 +30,7 @@ from update_gha.models import (
     UpdateVersionWith,
 )
 from update_gha.rewrite import (
+    PinRewrite,
     actions_from_spans,
     apply_version_updates,
     parse_uses_spans,
@@ -155,7 +156,7 @@ def _update_one_file(
         return None
     actions = set(actions_from_spans(spans)) - config.ignore_actions
 
-    updates: dict[str, str] = {}
+    updates: dict[str, PinRewrite] = {}
     action_updates: list[ActionUpdate] = []
 
     for action in sorted(actions):
@@ -183,13 +184,19 @@ def _update_one_file(
             continue
 
         updated_action = f"{action_location}@{resolved.version}"
-        if action == updated_action:
+        comment = _release_tag_comment(config.update_version_with, resolved)
+        version_changed = action != updated_action
+        if not version_changed and comment is None:
             reporter.info(f'No updates found for "{action_repository}"')
             continue
 
-        reporter.info(f'Found new version for "{action_repository}"')
-        reporter.info(f'Updating "{action}" with "{updated_action}"...')
-        updates[action] = resolved.version
+        if version_changed:
+            reporter.info(f'Found new version for "{action_repository}"')
+            reporter.info(f'Updating "{action}" with "{updated_action}"...')
+        updates[action] = PinRewrite(
+            version=resolved.version,
+            comment=comment,
+        )
         action_updates.append(
             ActionUpdate(
                 repository=action_repository,
@@ -221,11 +228,12 @@ def _update_one_file(
     applied = _applied_updates(
         actions_from_spans(found_after), action_updates, reporter, workflow_path
     )
+    changed = updated_text != original and bool(applied)
     return FileUpdate(
         path=workflow_path,
         original=original,
-        updated=updated_text if applied else original,
-        actions=applied,
+        updated=updated_text if changed else original,
+        actions=applied if changed else (),
     )
 
 
@@ -281,6 +289,24 @@ def _applied_updates(
             f'"{workflow_path}". Skipping.'
         )
     return tuple(applied)
+
+
+def _release_tag_comment(
+    update_with: UpdateVersionWith, resolved: ResolvedVersion
+) -> str | None:
+    """Tag to write as a ``# tag`` comment on SHA pins, if any.
+
+    Only ``release-commit-sha`` has a corresponding release tag. The
+    tag is skipped when it would not be a safe single-line comment.
+    """
+    if update_with is not UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA:
+        return None
+    if resolved.release is None:
+        return None
+    tag = resolved.release.tag_name.strip()
+    if not tag or "\n" in tag or "\r" in tag:
+        return None
+    return tag
 
 
 def _split_action(action: str) -> tuple[str, str] | None:

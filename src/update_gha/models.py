@@ -109,6 +109,11 @@ class ActionUpdate(BaseModel):
             ):
                 release = resolved.release
                 commit = resolved.commit
+                if self.old_version == self.new_version:
+                    return (
+                        f"{start} updated the release tag comment to "
+                        f"**[{release.tag_name}]({release.html_url})**\n"
+                    )
                 return (
                     f"{start} added a new "
                     f"**[commit]({commit.url})** to "
@@ -175,11 +180,21 @@ class UpdateReport(BaseModel):
         if not (updates := self.action_updates):
             return "Everything is up-to-date."
         width = max(len(update.location) for update in updates)
-        lines = [
-            f"{update.location:<{width}}  "
-            f"{update.old_version}  ->  {update.new_version}"
-            for update in updates
-        ]
+        lines: list[str] = []
+        for update in updates:
+            if (
+                update.old_version == update.new_version
+                and update.resolved.release is not None
+            ):
+                lines.append(
+                    f"{update.location:<{width}}  "
+                    f"{update.new_version}  ({update.resolved.release.tag_name})"
+                )
+            else:
+                lines.append(
+                    f"{update.location:<{width}}  "
+                    f"{update.old_version}  ->  {update.new_version}"
+                )
         file_count = sum(1 for file_update in self.files if file_update.changed)
         lines.extend(("", f"Updated {len(updates)} actions in {file_count} files."))
         return "\n".join(lines)
