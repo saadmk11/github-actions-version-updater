@@ -12,6 +12,7 @@ from update_gha.log import Reporter
 
 
 def open_repo(reporter: Reporter) -> Repo:
+    """Open the enclosing repository, exiting with a diagnostic if absent."""
     try:
         return Repo(search_parent_directories=True)
     except InvalidGitRepositoryError as exc:
@@ -55,6 +56,7 @@ def create_branch(
     new_branch: str,
     reset: bool,
 ) -> str | None:
+    """Check out a new or reset update branch and return its remote lease SHA."""
     reporter.info(f"Create New Branch ({base_branch} -> {new_branch})")
     run_git(repo, reporter, "checkout", base_branch)
     if reset:
@@ -66,6 +68,7 @@ def create_branch(
 
 
 def fetch_remote_branch(repo: Repo, reporter: Reporter, branch: str) -> str | None:
+    """Fetch the update branch, returning its tip or None if it does not exist."""
     try:
         stdout = repo.git.execute(
             [
@@ -111,6 +114,7 @@ def commit_and_push(
     paths: Sequence[Path],
     lease_sha: str | None = None,
 ) -> None:
+    """Commit only the supplied workflow paths and push with an explicit lease."""
     relative_paths = _repo_relative_paths(repo, paths, reporter)
     if not relative_paths:
         reporter.error("No workflow files were provided for the update commit.")
@@ -164,6 +168,7 @@ def _as_text(value: object) -> str:
 
 
 def run_git(repo: Repo, reporter: Reporter, *args: str) -> str:
+    """Run Git, report its output, and preserve a failing command's exit status."""
     try:
         stdout = repo.git.execute(["git", *args])
     except GitCommandError as exc:

@@ -11,4 +11,5 @@ EXTRA_HINT = (
 
 
 def has_action_extra() -> bool:
+    """Return whether the optional GitPython dependency is installed."""
     return importlib.util.find_spec("git") is not None

@@ -5,18 +5,26 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 
-import requests
+import httpx
 from pydantic import BaseModel, ConfigDict
 
 from update_gha.config import Configuration
-from update_gha.github import HTTP_TIMEOUT_SECONDS, error_summary, request_headers
+from update_gha.github import (
+    HTTP_TIMEOUT_SECONDS,
+    MAX_REDIRECTS,
+    REDIRECT_STATUSES,
+    GitHubAPIError,
+    error_summary,
+    redirect_target,
+    request_headers,
+)
 from update_gha.log import Reporter
 
 API_ROOT = "https://api.github.com"
 
 
 class _CreatedPullRequest(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", hide_input_in_errors=True)
 
     number: int
     html_url: str
@@ -29,10 +37,26 @@ def request(
     body: bytes | None,
     timeout: float = HTTP_TIMEOUT_SECONDS,
 ) -> tuple[int, str]:
-    response = requests.request(
-        method, url, headers=headers, data=body, timeout=timeout
-    )
-    return response.status_code, response.text
+    """Send a bounded HTTP request, raising GitHubAPIError on transport failure."""
+    api_url = url
+    for _ in range(MAX_REDIRECTS + 1):
+        try:
+            response = httpx.request(
+                method,
+                url,
+                headers=headers,
+                content=body,
+                timeout=httpx.Timeout(timeout, connect=min(timeout, 10)),
+                follow_redirects=False,
+            )
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
+            raise GitHubAPIError(
+                f"Could not reach GitHub ({type(exc).__name__})."
+            ) from exc
+        if response.status_code not in REDIRECT_STATUSES:
+            return response.status_code, response.text
+        url = redirect_target(url, response.headers.get("location"), api_url)
+    raise GitHubAPIError("GitHub returned too many redirects")
 
 
 def api_request(
@@ -41,11 +65,12 @@ def api_request(
     config: Configuration,
     payload: dict[str, str | list[str]] | None = None,
 ) -> tuple[int, str]:
+    """Serialize a payload and call GitHub using the configured token."""
     token = config.token
     if not token:
         raise ValueError("A GitHub token is required to call the pull-request API.")
     data = None if payload is None else json.dumps(payload).encode("utf-8")
-    headers = request_headers(token)
+    headers = request_headers(token.get_secret_value())
     headers["Content-Type"] = "application/json"
     return request(method, url, headers, data)
 
@@ -58,6 +83,7 @@ def create_pull_request(
     base: str,
     body: str,
 ) -> int | None:
+    """Open a pull request; return None if it already exists, or exit on failure."""
     url = f"{API_ROOT}/repos/{config.repository}/pulls"
     status, raw = api_request(
         "POST",
@@ -94,6 +120,7 @@ def add_reviewers(
     users: Sequence[str],
     teams: Sequence[str],
 ) -> None:
+    """Request user and team reviews, reporting API failures without exiting."""
     if not users and not teams:
         reporter.info("No reviewers were requested.")
         return
@@ -124,6 +151,7 @@ def add_labels(
     pull_request_number: int,
     labels: Sequence[str],
 ) -> None:
+    """Add labels to a new pull request and report API failures."""
     if not labels:
         reporter.info("No labels to add.")
         return

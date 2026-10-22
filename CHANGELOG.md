@@ -1,4 +1,13 @@
-# Unreleased
+# Version: v1.0.2
+
+* Install `update-gha[action]==1.0.2` from PyPI in an isolated CPython 3.14 environment.
+* Use HTTPX for GitHub requests, with pooled lookups, explicit timeouts, and same-origin redirects. Custom CA certificates use `SSL_CERT_FILE` or `SSL_CERT_DIR`.
+* Store `Configuration.token` as Pydantic `SecretStr`, masking representations and serialized output. Python integrations can access the token with `.get_secret_value()`.
+* Give the action's `token` input precedence over tokens in the job environment.
+* Update `github-action-utils` to 2.0.0 and Changelog CI to v2.0.2.
+* Support HTTPX 0.27 and Typer 0.26. Remove upper bounds on Packaging, PyYAML, and GitPython.
+* Run tests on Python 3.12–3.15 with uv-backed Tox, strict typing, and 100% statement and branch coverage.
+* Validate wheel and source installations with and without `[action]` before publishing with uv and PyPI Trusted Publishing.
 
 # Version: v1.0.1
 

@@ -2,20 +2,23 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from git import GitCommandError, InvalidGitRepositoryError
+from git import GitCommandError, InvalidGitRepositoryError, Repo
 from tests.action.conftest import make_config
 from tests.conftest import RecordingReporter, silent_reporter
 
 from update_gha.action import git
 from update_gha.action.run import prepare, run
+from update_gha.config import Configuration
+from update_gha.log import Reporter
 
 
 def _mock_repo() -> MagicMock:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     repo.working_tree_dir = "/repo"
     repo.is_dirty.return_value = False
     repo.git.execute.return_value = ""
@@ -112,12 +115,31 @@ def test_commit_requires_working_tree() -> None:
 
 
 def _stub_run(monkeypatch: pytest.MonkeyPatch) -> None:
-    def noop(*_args: object, **_kwargs: object) -> None:
+    def create_branch(
+        repo: Repo,
+        reporter: Reporter,
+        *,
+        base_branch: str,
+        new_branch: str,
+        reset: bool,
+    ) -> str | None:
+        return None
+
+    def commit_and_push(
+        repo: Repo,
+        config: Configuration,
+        reporter: Reporter,
+        *,
+        branch: str,
+        force_push: bool,
+        paths: Sequence[Path],
+        lease_sha: str | None = None,
+    ) -> None:
         return None
 
     monkeypatch.setattr("update_gha.action.run.open_repo", lambda _r: _mock_repo())
-    monkeypatch.setattr("update_gha.action.run.create_branch", noop)
-    monkeypatch.setattr("update_gha.action.run.commit_and_push", noop)
+    monkeypatch.setattr("update_gha.action.run.create_branch", create_branch)
+    monkeypatch.setattr("update_gha.action.run.commit_and_push", commit_and_push)
 
 
 def test_run_writes_pr_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -216,7 +238,7 @@ def test_prepare_rejects_dirty_tracked_worktree(
     ],
 )
 def test_run_git_reports_stdout(stdout: str | bytes, expected: str) -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     reporter = RecordingReporter()
     repo.git.execute.return_value = stdout
     assert git.run_git(repo, reporter, "status") == expected
@@ -227,7 +249,7 @@ def test_run_git_reports_stdout(stdout: str | bytes, expected: str) -> None:
 
 
 def test_run_git_reports_stderr_and_exits() -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     reporter = RecordingReporter()
     repo.git.execute.side_effect = GitCommandError("git status", 1, stderr="fail")
     with pytest.raises(SystemExit) as exited:
@@ -237,7 +259,7 @@ def test_run_git_reports_stderr_and_exits() -> None:
 
 
 def test_run_git_decodes_bytes_stderr() -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     repo.git.execute.side_effect = GitCommandError(
         "git status", "bad", stderr=b"fail-bytes"
     )
@@ -269,13 +291,21 @@ def test_commit_does_not_write_git_config() -> None:
     repo.config_writer.assert_not_called()
 
 
-def test_open_repo_finds_workspace() -> None:
-    repo = git.open_repo(silent_reporter())
-    assert repo.working_tree_dir is not None
+def test_open_repo_finds_workspace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "project"
+    with Repo.init(root):
+        nested = root / "nested" / "directory"
+        nested.mkdir(parents=True)
+        monkeypatch.chdir(nested)
+        with git.open_repo(silent_reporter()) as repo:
+            assert Path(repo.working_dir).resolve() == root.resolve()
 
 
 def test_create_branch_checks_out_base_then_new() -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     repo.git.execute.return_value = ""
     git.create_branch(
         repo,
@@ -292,7 +322,7 @@ def test_create_branch_checks_out_base_then_new() -> None:
 
 
 def test_create_branch_resets_named_branch_after_fetch() -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
 
     def execute(args: list[str]) -> str:
         return "abc1234" if args[1] == "rev-parse" else "From origin"
@@ -326,7 +356,7 @@ def test_create_branch_resets_named_branch_after_fetch() -> None:
 
 
 def test_create_branch_reset_when_remote_missing() -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
 
     def execute(args: list[str]) -> str:
         if args[1] == "fetch":
@@ -357,7 +387,7 @@ def test_create_branch_reset_when_remote_missing() -> None:
 
 
 def test_fetch_remote_branch_propagates_real_failure() -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     repo.git.execute.side_effect = GitCommandError(
         "git fetch", 128, stderr="fatal: authentication failed"
     )
@@ -366,7 +396,7 @@ def test_fetch_remote_branch_propagates_real_failure() -> None:
 
 
 def test_fetch_remote_branch_still_rev_parses_when_fetch_is_quiet() -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     repo.git.execute.return_value = ""
     assert git.fetch_remote_branch(repo, silent_reporter(), "updates") == ""
     commands = [call.args[0] for call in repo.git.execute.call_args_list]
@@ -375,19 +405,19 @@ def test_fetch_remote_branch_still_rev_parses_when_fetch_is_quiet() -> None:
 
 
 def test_resolve_base_branch_uses_github_ref() -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     config = make_config(github_ref="refs/heads/develop")
     assert git.resolve_base_branch(config, repo) == "develop"
 
 
 def test_resolve_base_branch_uses_github_ref_name() -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     config = make_config(github_ref="", github_ref_name="release")
     assert git.resolve_base_branch(config, repo) == "release"
 
 
 def test_resolve_base_branch_uses_pull_request_base_ref() -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     config = make_config(
         github_ref="refs/pull/1/merge",
         github_ref_name="1/merge",
@@ -397,14 +427,14 @@ def test_resolve_base_branch_uses_pull_request_base_ref() -> None:
 
 
 def test_resolve_base_branch_ignores_tag_ref() -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     repo.head.is_valid.return_value = False
     config = make_config(github_ref="refs/tags/v1.0.0", github_ref_name="v1.0.0")
     assert git.resolve_base_branch(config, repo) == "main"
 
 
 def test_resolve_base_branch_uses_local_branch() -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     repo.head.is_valid.return_value = True
     repo.head.is_detached = False
     repo.active_branch.name = "local-feature"
@@ -413,7 +443,7 @@ def test_resolve_base_branch_uses_local_branch() -> None:
 
 
 def test_resolve_base_branch_skips_merge_ref_name() -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     repo.head.is_valid.return_value = True
     repo.head.is_detached = False
     repo.active_branch.name = "local-feature"
@@ -422,7 +452,7 @@ def test_resolve_base_branch_skips_merge_ref_name() -> None:
 
 
 def test_resolve_base_branch_falls_back_when_detached() -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     repo.head.is_valid.return_value = True
     repo.head.is_detached = True
     config = make_config(github_ref="", github_ref_name="")
@@ -430,7 +460,7 @@ def test_resolve_base_branch_falls_back_when_detached() -> None:
 
 
 def test_resolve_base_branch_falls_back_when_head_invalid() -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     repo.head.is_valid.return_value = False
     config = make_config(github_ref="", github_ref_name="")
     assert git.resolve_base_branch(config, repo) == "main"
@@ -438,7 +468,7 @@ def test_resolve_base_branch_falls_back_when_head_invalid() -> None:
 
 @pytest.mark.parametrize("error", [ValueError("no head"), TypeError("no head")])
 def test_resolve_base_branch_falls_back_on_error(error: Exception) -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     repo.head.is_valid.side_effect = error
     config = make_config(github_ref="", github_ref_name="")
     assert git.resolve_base_branch(config, repo) == "main"
@@ -447,11 +477,11 @@ def test_resolve_base_branch_falls_back_on_error(error: Exception) -> None:
 def test_run_creates_named_branch_from_resolved_base(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    seen: dict[str, object] = {}
+    seen: dict[str, str | bool] = {}
 
     def capture(
-        _repo: object,
-        _reporter: object,
+        _repo: Repo,
+        _reporter: Reporter,
         *,
         base_branch: str,
         new_branch: str,
@@ -477,7 +507,7 @@ def test_run_creates_named_branch_from_resolved_base(
 
 
 def test_prepare_validates_refs(monkeypatch: pytest.MonkeyPatch) -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     repo.is_dirty.return_value = False
     repo.head.is_valid.return_value = True
     repo.head.is_detached = False
@@ -496,7 +526,7 @@ def test_prepare_validates_refs(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_run_uses_local_branch_when_github_ref_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    repo = MagicMock()
+    repo = MagicMock(spec=Repo)
     repo.is_dirty.return_value = False
     repo.head.is_valid.return_value = True
     repo.head.is_detached = False
@@ -504,8 +534,8 @@ def test_run_uses_local_branch_when_github_ref_missing(
     seen: dict[str, str] = {}
 
     def capture(
-        _repo: object,
-        _reporter: object,
+        _repo: Repo,
+        _reporter: Reporter,
         *,
         base_branch: str,
         new_branch: str,

@@ -22,6 +22,8 @@ from update_gha.log import Reporter
 
 @dataclass(frozen=True)
 class PullRequestContext:
+    """Validated repository and branch information for a pending update."""
+
     repo: Repo
     head: str
     base: str
@@ -112,6 +114,7 @@ def run(
 
 
 def write_outputs(config: Configuration, number: int) -> None:
+    """Append both public pull request number outputs when a path is configured."""
     if (path := config.github_output) is None:
         return
     with path.open("a", encoding="utf-8") as handle:

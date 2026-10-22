@@ -37,6 +37,7 @@ from update_gha.cli.options import (
     VerboseOption,
 )
 from update_gha.config import configuration_from_cli, split_csv
+from update_gha.github import GitHubAPIError
 from update_gha.log import (
     Verbosity,
     configure_logging,
@@ -101,9 +102,8 @@ def main(
 ) -> None:
     """Bump outdated GitHub Action pins to the latest release or commit.
 
-    Scans .github/workflows by default. GitHub API calls are unauthenticated
-    unless --token is set. A token is required for --pull-request and for
-    private action repositories.
+    Scan .github/workflows by default. Private action repositories and
+    --pull-request require a GitHub token.
     """
     if verbose and quiet:
         raise typer.BadParameter("Use either --verbose or --quiet, not both.")
@@ -217,7 +217,7 @@ def main(
                 paths=tuple(item.path for item in report.files if item.changed),
                 context=pull_request_context,
             )
-        except (OSError, ValidationError, ValueError) as exc:
+        except (GitHubAPIError, OSError, ValidationError, ValueError) as exc:
             reporter.error(str(exc))
             raise typer.Exit(1) from exc
         raise typer.Exit(result)

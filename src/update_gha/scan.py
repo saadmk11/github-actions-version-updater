@@ -55,7 +55,8 @@ def run_update(
     if client is not None:
         github: VersionLookup = client
     else:
-        owned_client = GitHubClient(config.token, active_reporter, session=session)
+        token = config.token.get_secret_value() if config.token else None
+        owned_client = GitHubClient(token, active_reporter, session=session)
         github = owned_client
     root = workspace if workspace is not None else Path.cwd()
     try:
@@ -324,12 +325,12 @@ def _split_action(action: str) -> tuple[str, str] | None:
 
 
 def _read_text_preserving_newlines(path: Path) -> str:
-    """Read as text without translating ``\\r\\n`` into ``\\n``."""
+    """Read text without converting line endings."""
     return path.read_bytes().decode("utf-8", errors="surrogateescape")
 
 
 def _write_text_preserving_newlines(path: Path, text: str) -> None:
-    """Write ``text`` as-is, keeping ``\\r\\n`` and the original file mode."""
+    """Write text without converting line endings or changing the file mode."""
     data = text.encode("utf-8", errors="surrogateescape")
     original_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
     descriptor, tmp_name = mkstemp(

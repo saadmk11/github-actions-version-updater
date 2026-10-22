@@ -10,7 +10,7 @@ Scans workflow YAML for `uses:` pins, asks GitHub for a newer release tag, relea
 | | [GitHub Action](#github-action) | [Python package](#python-package) |
 | --- | --- | --- |
 | **Use this when** | You want a scheduled job that opens a pull request | You want a CLI on your machine or in other CI |
-| **Add it with** | `uses: saadmk11/github-actions-version-updater@v1.0.1` | `pip install update-gha` or `uvx update-gha` |
+| **Add it with** | `uses: saadmk11/github-actions-version-updater@v1.0.2` | `pip install update-gha` or `uvx update-gha` |
 | **Pull requests** | Opened by default | Optional (`--pull-request`) |
 
 The Marketplace listing and GitHub repo are **github-actions-version-updater**. The PyPI project is **[update-gha](https://pypi.org/project/update-gha/)**. Same updater, two ways to run it.
@@ -43,6 +43,7 @@ The Marketplace listing and GitHub repo are **github-actions-version-updater**. 
   - [Lint and types](#lint-and-types)
   - [Pre-commit](#pre-commit)
   - [Run locally](#run-locally)
+  - [Release](#release)
   - [CI](#ci)
 - [License](#license)
 
@@ -54,7 +55,9 @@ Add a workflow to this repository. On a schedule (or when you run it by hand) th
 
 [Get it on the Marketplace](https://github.com/marketplace/actions/github-actions-version-updater)
 
-Under the hood it is a composite action: it installs `update-gha[action]` from this checkout into an isolated CPython 3.14 environment and runs `update-gha --pull-request`. It does not change the job's `python` on `PATH`.
+The action installs `update-gha[action]==1.0.2` from PyPI in an isolated CPython 3.14 environment and runs `update-gha --pull-request`. It ignores the consuming repository's Python environment and package-index settings.
+
+Local checkouts (`uses: ./`) also install the pinned PyPI release. Publish that version before running the action.
 
 v1 is not a Docker image. Self-hosted runners need bash and outbound network so uv can install that isolated interpreter; Docker is not required.
 
@@ -103,7 +106,7 @@ jobs:
           token: ${{ secrets.WORKFLOW_SECRET }}
 
       - name: Run GitHub Actions Version Updater
-        uses: saadmk11/github-actions-version-updater@v1.0.1
+        uses: saadmk11/github-actions-version-updater@v1.0.2
         with:
           token: ${{ secrets.WORKFLOW_SECRET }}
 ```
@@ -174,7 +177,7 @@ Set only when this run created a pull request. Empty if you skipped the PR, noth
 ```yaml
 - name: Run GitHub Actions Version Updater
   id: update
-  uses: saadmk11/github-actions-version-updater@v1.0.1
+  uses: saadmk11/github-actions-version-updater@v1.0.2
   with:
     token: ${{ secrets.WORKFLOW_SECRET }}
 
@@ -228,7 +231,7 @@ jobs:
           token: ${{ secrets.WORKFLOW_SECRET }}
 
       - name: Run GitHub Actions Version Updater
-        uses: saadmk11/github-actions-version-updater@v1.0.1
+        uses: saadmk11/github-actions-version-updater@v1.0.2
         with:
           token: ${{ secrets.WORKFLOW_SECRET }}
           committer_username: "actions-bot"
@@ -251,7 +254,7 @@ Writes the files, prints a diff, and fails the job if anything changed. Use this
 
 ```yaml
 - name: Run GitHub Actions Version Updater
-  uses: saadmk11/github-actions-version-updater@v1.0.1
+  uses: saadmk11/github-actions-version-updater@v1.0.2
   with:
     token: ${{ secrets.WORKFLOW_SECRET }}
     skip_pull_request: "true"
@@ -272,7 +275,7 @@ If the repository uses [Git LFS](https://git-lfs.github.com/), check out with `l
     rm -f .git/hooks/post-checkout .git/hooks/pre-push
 
 - name: Run GitHub Actions Version Updater
-  uses: saadmk11/github-actions-version-updater@v1.0.1
+  uses: saadmk11/github-actions-version-updater@v1.0.2
   with:
     token: ${{ secrets.WORKFLOW_SECRET }}
 ```
@@ -300,7 +303,7 @@ If the repository uses [Git LFS](https://git-lfs.github.com/), check out with `l
 
 ### Install
 
-Requires **Python 3.12** or newer.
+Supports **Python 3.12–3.15**.
 
 ```bash
 # one-off
@@ -315,12 +318,12 @@ uv run update-gha --check
 uv tool install update-gha
 ```
 
-Pull-request mode needs GitPython. Install the extra only if you will pass `--pull-request`:
+Pull-request mode needs the optional GitPython integration. Install the extra when using `--pull-request`:
 
 ```bash
 pip install 'update-gha[action]'
 uv add 'update-gha[action]'
-uv tool install --with 'update-gha[action]' update-gha
+uv tool install 'update-gha[action]'
 ```
 
 ### How the CLI works
@@ -388,6 +391,8 @@ pull_request_title = "Update GitHub Action versions"
 
 You can also enable pull-request mode with `GHA_UPDATE_CREATE_PULL_REQUEST=true`. Commit and PR fields (`committer_*`, `pull_request_*`, reviewers, labels) are ignored unless that flag or environment variable is on.
 
+For custom CA certificates, set `SSL_CERT_FILE` to a certificate bundle or `SSL_CERT_DIR` to an OpenSSL certificate directory. `REQUESTS_CA_BUNDLE` is not supported by HTTPX.
+
 ### CLI options
 
 | Option | Purpose | Default |
@@ -421,22 +426,22 @@ See `update-gha --help` for the full text.
 
 ## Development
 
-The package lives in `src/update_gha`. Tests are in `tests/`. Tooling is configured in `pyproject.toml` and run with [uv](https://docs.astral.sh/uv/) (0.11.32 or newer).
+The package lives in `src/update_gha`. Tests are in `tests/`. Tooling is configured in `pyproject.toml` and run with [uv](https://docs.astral.sh/uv/) (0.13.4 or newer).
 
 ### Prerequisites
 
-- Python **3.12+** (CI covers 3.12, 3.13, and 3.14; `.python-version` is `3.14`)
-- [uv](https://docs.astral.sh/uv/) **0.11.32** or newer
+- Python **3.12–3.15** (CI covers every supported version; `.python-version` is `3.14`)
+- [uv](https://docs.astral.sh/uv/) **0.13.4** or newer
 
 ### Setup
 
 ```bash
 git clone https://github.com/saadmk11/github-actions-version-updater.git
 cd github-actions-version-updater
-uv sync --all-groups --all-extras
+uv sync --locked --all-groups --all-extras
 ```
 
-That installs the package (editable), the `[action]` extra (GitPython), and the `dev` group (pytest, ruff, mypy).
+This installs the editable package, the `[action]` extra, and the `test`, `lint`, `typing`, and `tox` development groups.
 
 ### Layout
 
@@ -446,30 +451,39 @@ That installs the package (editable), the `[action]` extra (GitPython), and the 
 | `src/update_gha/cli/` | `update-gha` console script |
 | `src/update_gha/action/` | Git + pull-request helpers (optional extra) |
 | `tests/` | Pytest suite; `tests/fixtures/` are YAML rewrite pairs |
-| `action.yaml` | Composite GitHub Action that runs this checkout |
+| `action.yaml` | Composite GitHub Action with an exact PyPI package pin |
+| `tests/packaging/` | Release metadata and fresh wheel/sdist installation checks |
 | `.github/workflows/ci.yaml` | Lint and test matrix |
 
 ### Tests
 
 ```bash
-uv run pytest
+uv run --locked tox run -e py312,py313,py314,py315
+uv run --locked tox run -e base,coverage
+uv run --locked tox run -e minimum,latest
 ```
 
-Coverage is required at **100%** (`--cov-fail-under=100`). Tests do not hit the live GitHub API; HTTP and git are faked.
+Tox tests the installed wheel. Normal environments use `uv.lock`; `minimum` and `latest` resolve dependencies independently. The `coverage` environment requires **100%** statement and branch coverage. Warnings fail the suite. The `base` environment runs without GitPython.
+
+Install the required interpreters with `uv python install 3.12 3.13 3.14 3.15`. Tests use controlled HTTP responses and temporary Git repositories without contacting GitHub.
 
 ```bash
-uv run pytest tests/test_rewrite.py          # one file
-uv run pytest tests/test_cli.py::test_help   # one test
+uv run --locked pytest tests/test_rewrite.py          # one file
+uv run --locked pytest tests/test_cli.py::test_help   # one test
 ```
 
-`tests/smoke_test.py` is also run by the release workflow against the built wheel and sdist.
+Check the distributions exactly as CI does:
+
+```bash
+uv run --locked tox run -e package
+```
+
+Checks cover metadata, entry points, and wheel/sdist installations with and without `[action]`. Smoke tests run outside the checkout and exercise JSON output, SHA updates, and pull-request validation.
 
 ### Lint and types
 
 ```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy
+uv run --locked tox run -e lint,type
 ```
 
 Ruff uses a line length of 88. mypy runs in strict mode on `src` and `tests`.
@@ -483,7 +497,7 @@ uv run ruff format .
 
 ### Pre-commit
 
-[`.pre-commit-config.yaml`](.pre-commit-config.yaml) runs end-of-file / whitespace checks, Ruff, and mypy. The Ruff and mypy hooks install their own tools, so they work locally and on pre-commit.ci. Install [pre-commit](https://pre-commit.com/) separately (it is not in the `dev` group):
+[`.pre-commit-config.yaml`](.pre-commit-config.yaml) runs end-of-file / whitespace checks, Ruff, and mypy. The local hooks run the same uv-managed Tox environments as CI and require uv on PATH. Install [pre-commit](https://pre-commit.com/) separately (it is not in the `dev` group):
 
 ```bash
 uv tool install pre-commit
@@ -499,12 +513,23 @@ uv run update-gha --dry-run --diff
 uv run python -m update_gha --check
 ```
 
+### Release
+
+1. Set the version in `pyproject.toml`, the exact `[action]` PyPI pin in `action.yaml`, and the documented action references. Run `uv lock` and commit the lockfile with the release changes.
+2. Run `uv run --locked tox` and `uv run --locked python -m tests.packaging.check --release v1.0.2`.
+3. Push the matching release tag (`v1.0.2`). The release workflow runs CI, builds with `uv build --no-sources`, validates the distributions, and uploads them for publication.
+
+Configure the PyPI `update-gha` project’s [GitHub Trusted Publisher](https://docs.pypi.org/trusted-publishers/adding-a-publisher/) with owner `saadmk11`, repository `github-actions-version-updater`, workflow `release.yaml`, and environment `pypi`. Create the matching GitHub environment and set any required reviewers there. Only the publication job receives `id-token: write`; no PyPI API token is needed. It publishes the validated artifacts with `uv publish --trusted-publishing always dist/*`, then verifies the released CLI in an isolated installation. Publish the package before using its matching composite action tag.
+
 ### CI
 
 [`.github/workflows/ci.yaml`](.github/workflows/ci.yaml) runs on pushes and pull requests to `main`:
 
-- **lint** — `ruff check`, `ruff format --check`, `mypy` on Python 3.14
-- **test** — `pytest` on Python 3.12, 3.13, and 3.14
+- **test** — the full suite with `[action]` on Python 3.12–3.15 on Linux
+- **checks** — Ruff, strict mypy, 100% coverage, base installation, and independent minimum/latest dependency resolutions
+- **package** — build and validate wheel and source distributions in fresh base and `[action]` environments on Linux, macOS, and Windows
+
+Release tags run the same CI checks before publishing. The release workflow verifies that the tag, package version, and action's PyPI pin agree, publishes with trusted publishing, and checks the published action entry point.
 
 Python dependencies are updated by Dependabot (`uv`). Action pins in this repository are updated by [`.github/workflows/update-actions.yaml`](.github/workflows/update-actions.yaml).
 

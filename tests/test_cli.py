@@ -3,13 +3,22 @@
 from __future__ import annotations
 
 import json
+import os
+import runpy
+import subprocess
+import sys
+from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from typer.testing import CliRunner
 
+from tests.conftest import pull_request_context
+from update_gha.action import has_action_extra
 from update_gha.cli.main import app
 from update_gha.config import Configuration
+from update_gha.github import GitHubAPIError
 from update_gha.log import Reporter
 from update_gha.models import (
     ActionUpdate,
@@ -18,6 +27,13 @@ from update_gha.models import (
     ResolvedVersion,
     UpdateReport,
     UpdateVersionWith,
+)
+
+if TYPE_CHECKING:
+    from update_gha.action.run import PullRequestContext
+
+requires_action = pytest.mark.skipif(
+    not has_action_extra(), reason="Requires the optional [action] integration"
 )
 
 runner = CliRunner()
@@ -115,7 +131,7 @@ def test_fail_on_update_writes_then_exits_one(
 ) -> None:
     writes: list[bool] = []
 
-    def fake_run_update(config: Configuration, **_kwargs: object) -> UpdateReport:
+    def fake_run_update(config: Configuration, *, reporter: Reporter) -> UpdateReport:
         writes.append(config.should_write())
         return _report(tmp_path, changed=True)
 
@@ -172,7 +188,7 @@ def test_dry_run_does_not_write(
 ) -> None:
     wrote: list[bool] = []
 
-    def fake_run_update(config: Configuration, **_kwargs: object) -> UpdateReport:
+    def fake_run_update(config: Configuration, *, reporter: Reporter) -> UpdateReport:
         wrote.append(config.should_write())
         return _report(tmp_path, changed=True)
 
@@ -194,6 +210,7 @@ def test_pull_request_requires_extra(monkeypatch: pytest.MonkeyPatch) -> None:
     assert called == []
 
 
+@requires_action
 def test_pull_request_requires_github_values_before_updating(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -207,13 +224,21 @@ def test_pull_request_requires_github_values_before_updating(
     assert called == []
 
 
+@requires_action
 def test_pull_request_skipped_when_dry_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    called: list[object] = []
+    called: list[bool] = []
     _stub_run_update(monkeypatch, tmp_path, changed=True)
 
-    def fake_run(*_args: object, **_kwargs: object) -> int:
+    def fake_run(
+        _config: Configuration,
+        _reporter: Reporter,
+        *,
+        body: str,
+        paths: Sequence[Path] = (),
+        context: PullRequestContext | None = None,
+    ) -> int:
         called.append(True)
         return 0
 
@@ -223,20 +248,23 @@ def test_pull_request_skipped_when_dry_run(
     assert called == []
 
 
+@requires_action
 def test_pull_request_runs_when_updates_exist(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     bodies: list[str] = []
     _stub_run_update(monkeypatch, tmp_path, changed=True)
-    monkeypatch.setattr("update_gha.action.run.prepare", lambda *_args: object())
+    monkeypatch.setattr(
+        "update_gha.action.run.prepare", lambda *_args: pull_request_context(tmp_path)
+    )
 
     def fake_run(
         _config: Configuration,
-        _reporter: object,
+        _reporter: Reporter,
         *,
         body: str,
-        paths: tuple[Path, ...],
-        context: object,
+        paths: Sequence[Path],
+        context: PullRequestContext | None,
     ) -> int:
         bodies.append(body)
         assert paths and paths[0].name == "workflow.yml"
@@ -253,32 +281,61 @@ def test_pull_request_runs_when_updates_exist(
     assert bodies[0].startswith("### GitHub Actions Version Updates")
 
 
+@requires_action
+@pytest.mark.parametrize(
+    "error",
+    [
+        OSError("push failed"),
+        GitHubAPIError("API unavailable"),
+        ValueError("invalid response"),
+    ],
+)
 def test_pull_request_runtime_error_is_reported_without_traceback(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: Exception
 ) -> None:
     _stub_run_update(monkeypatch, tmp_path, changed=True)
-    monkeypatch.setattr("update_gha.action.run.prepare", lambda *_args: object())
     monkeypatch.setattr(
-        "update_gha.action.run.run",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("push failed")),
+        "update_gha.action.run.prepare", lambda *_args: pull_request_context(tmp_path)
     )
+
+    def fail(
+        config: Configuration,
+        reporter: Reporter,
+        *,
+        body: str,
+        paths: Sequence[Path],
+        context: PullRequestContext | None,
+    ) -> int:
+        raise error
+
+    monkeypatch.setattr("update_gha.action.run.run", fail)
     result = runner.invoke(
         app,
         ["--pull-request", "--token", "token-token", "--repository", "o/r"],
     )
     assert result.exit_code == 1
-    assert "push failed" in result.stderr
+    assert str(error) in result.stderr
     assert "Traceback" not in result.output
 
 
+@requires_action
 def test_pull_request_skipped_when_up_to_date(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    called: list[object] = []
+    called: list[bool] = []
     _stub_run_update(monkeypatch, tmp_path, changed=False)
-    monkeypatch.setattr("update_gha.action.run.prepare", lambda *_args: object())
+    monkeypatch.setattr(
+        "update_gha.action.run.prepare", lambda *_args: pull_request_context(tmp_path)
+    )
 
-    def fake_run(*_args: object, **_kwargs: object) -> int:
+    def fake_run(
+        _config: Configuration,
+        _reporter: Reporter,
+        *,
+        body: str,
+        paths: Sequence[Path] = (),
+        context: PullRequestContext | None = None,
+    ) -> int:
         called.append(True)
         return 0
 
@@ -312,23 +369,16 @@ def test_no_pull_request_overrides_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     seen: list[Configuration] = []
-    called: list[object] = []
 
-    def fake_run_update(config: Configuration, **_kwargs: object) -> UpdateReport:
+    def fake_run_update(config: Configuration, *, reporter: Reporter) -> UpdateReport:
         seen.append(config)
         return _report(tmp_path, changed=True)
 
-    def fake_run(*_args: object, **_kwargs: object) -> int:
-        called.append(True)
-        return 0
-
     monkeypatch.setenv("GHA_UPDATE_CREATE_PULL_REQUEST", "true")
     monkeypatch.setattr(_RUN_UPDATE, fake_run_update)
-    monkeypatch.setattr("update_gha.action.run.run", fake_run)
     result = runner.invoke(app, ["--no-pull-request"])
     assert result.exit_code == 0
     assert seen[0].create_pull_request is False
-    assert called == []
 
 
 def test_check_from_environment_exits_one(
@@ -345,9 +395,7 @@ def test_json_stdout_is_clean_on_github_actions(
 ) -> None:
     report = _report(tmp_path, changed=True)
 
-    def fake_run_update(
-        _config: Configuration, *, reporter: Reporter, **_kwargs: object
-    ) -> UpdateReport:
+    def fake_run_update(_config: Configuration, *, reporter: Reporter) -> UpdateReport:
         reporter.info("progress")
         reporter.warning("warning")
         with reporter.group("group"):
@@ -362,8 +410,29 @@ def test_json_stdout_is_clean_on_github_actions(
     assert "progress" in result.stderr
 
 
+def test_json_stdout_stays_clean_with_utility_subprocess_setting(
+    tmp_path: Path,
+) -> None:
+    env = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith(("GITHUB_", "GHA_UPDATE_"))
+    }
+    env.update(GITHUB_ACTIONS="true", COMMANDS_USE_SUBPROCESS="1")
+    result = subprocess.run(
+        [sys.executable, "-m", "update_gha", "--dry-run", "--format", "json"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert json.loads(result.stdout) == {"files": [], "wrote": False}
+    assert "No workflow files found" in result.stderr
+
+
 def test_oserror_from_run_update_exits_one(monkeypatch: pytest.MonkeyPatch) -> None:
-    def boom(_config: Configuration, **_kwargs: object) -> None:
+    def boom(_config: Configuration, *, reporter: Reporter) -> None:
         raise OSError("disk")
 
     monkeypatch.setattr(_RUN_UPDATE, boom)
@@ -372,14 +441,24 @@ def test_oserror_from_run_update_exits_one(monkeypatch: pytest.MonkeyPatch) -> N
     assert "disk" in result.stderr
 
 
+@requires_action
 def test_pull_request_skipped_when_writes_fail(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    called: list[object] = []
+    called: list[bool] = []
     _stub_run_update(monkeypatch, tmp_path, changed=True, wrote=False)
-    monkeypatch.setattr("update_gha.action.run.prepare", lambda *_args: object())
+    monkeypatch.setattr(
+        "update_gha.action.run.prepare", lambda *_args: pull_request_context(tmp_path)
+    )
 
-    def fake_run(*_args: object, **_kwargs: object) -> int:
+    def fake_run(
+        _config: Configuration,
+        _reporter: Reporter,
+        *,
+        body: str,
+        paths: Sequence[Path] = (),
+        context: PullRequestContext | None = None,
+    ) -> int:
         called.append(True)
         return 0
 
@@ -402,6 +481,7 @@ def test_invalid_environment_configuration_exits_two(
     assert "Invalid value" in result.stderr
 
 
+@requires_action
 def test_pull_request_preflight_runs_before_update(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -449,3 +529,14 @@ def test_diff_prints_changed_files(
     assert "changed.yml" in result.stdout
     assert "+new\n" in result.stdout
     assert "same.yml" not in result.stdout
+
+
+@pytest.mark.parametrize("run_name", ["__main__", "imported_entrypoint"])
+def test_module_entrypoint_dispatches_only_when_executed(
+    run_name: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called: list[bool] = []
+    monkeypatch.setattr("update_gha.cli.app", lambda: called.append(True))
+    runpy.run_module("update_gha.__main__", run_name=run_name)
+    assert called == ([True] if run_name == "__main__" else [])

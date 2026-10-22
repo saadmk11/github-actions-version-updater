@@ -16,7 +16,7 @@ class UpdateVersionWith(StrEnum):
 
 
 class ReleaseType(StrEnum):
-    """Semver component that is allowed to increase."""
+    """SemVer component allowed to increase."""
 
     MAJOR = "major"
     MINOR = "minor"
@@ -147,6 +147,7 @@ class FileUpdate(BaseModel):
 
     @property
     def changed(self) -> bool:
+        """Return whether the workflow text differs from its original content."""
         return self.original != self.updated
 
 
@@ -170,13 +171,16 @@ class UpdateReport(BaseModel):
 
     @property
     def has_updates(self) -> bool:
+        """Return whether any workflow text changed."""
         return any(file_update.changed for file_update in self.files)
 
     def pull_request_body(self) -> str:
+        """Render the deduplicated updates as a Markdown pull request body."""
         items = "".join(update.markdown_line() for update in self.action_updates)
         return f"### GitHub Actions Version Updates\n{items}"
 
     def text_summary(self) -> str:
+        """Render a compact update table, or an up-to-date message."""
         if not (updates := self.action_updates):
             return "Everything is up-to-date."
         width = max(len(update.location) for update in updates)
@@ -201,7 +205,7 @@ class UpdateReport(BaseModel):
 
 
 class GitHubReleasePayload(BaseModel):
-    """Subset of ``GET /repos/{repo}/releases`` items we read."""
+    """Release response fields used for version lookup."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
@@ -213,19 +217,23 @@ class GitHubReleasePayload(BaseModel):
 
 
 class GitHubCommitAuthor(BaseModel):
+    """Commit author timestamp received from GitHub."""
+
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     date: str
 
 
 class GitHubCommitDetail(BaseModel):
+    """Author details nested in a GitHub commit."""
+
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     author: GitHubCommitAuthor
 
 
 class GitHubCommitPayload(BaseModel):
-    """Subset of ``GET /repos/{repo}/commits`` items we read."""
+    """Commit response fields used for SHA resolution."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
@@ -235,6 +243,8 @@ class GitHubCommitPayload(BaseModel):
 
 
 class GitHubTagCommitPayload(BaseModel):
+    """Commit SHA targeted by a GitHub tag."""
+
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     sha: str
@@ -258,7 +268,7 @@ class GitHubRepoPayload(BaseModel):
 
 
 class GitHubMessagePayload(BaseModel):
-    """Subset of a GitHub error body we are willing to log."""
+    """GitHub error message included in diagnostics."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 

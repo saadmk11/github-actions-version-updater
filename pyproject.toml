@@ -1,6 +1,6 @@
 [project]
 name = "update-gha"
-version = "1.0.1"
+version = "1.0.2"
 description = "Find outdated GitHub Actions in workflow YAML and bump each pin to the latest release tag, release commit, or default-branch SHA."
 readme = "README.md"
 license = "MIT"
@@ -17,6 +17,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Programming Language :: Python :: 3 :: Only",
     "Topic :: Software Development :: Quality Assurance",
     "Typing :: Typed",
@@ -28,12 +29,14 @@ keywords = [
     "cli",
 ]
 dependencies = [
+    "github-action-utils>=2.0.0,<3",
+    "httpx>=0.27,<1",
     "packaging>=23.2",
-    "pydantic>=2.7",
-    "pydantic-settings>=2.7",
+    "pydantic>=2.7,<3",
+    "pydantic-settings>=2.7,<3",
     "pyyaml>=6.0.1",
-    "requests>=2.32.4",
-    "typer>=0.12.5",
+    # Typer 0.26 bundles Click instead of resolving it separately.
+    "typer>=0.26,<1",
 ]
 
 [project.urls]
@@ -51,25 +54,29 @@ action = [
 update-gha = "update_gha.cli:app"
 
 [build-system]
-requires = ["uv_build>=0.11.32,<0.12.0"]
+# Keep uv_build within its documented minor-version compatibility range.
+requires = ["uv_build>=0.13.4,<0.14"]
 build-backend = "uv_build"
 
 [dependency-groups]
+test = ["pytest>=8.0", "pytest-cov>=6.0"]
+lint = ["ruff>=0.17.1"]
+typing = ["mypy>=1.18", "types-pyyaml"]
+tox = ["tox>=4.67.1", "tox-uv-bare>=1.37.0"]
 dev = [
-    "mypy>=1.18",
-    "pytest>=8.0",
-    "pytest-cov>=6.0",
-    "ruff>=0.12",
-    "types-pyyaml",
-    "types-requests",
+    { include-group = "test" },
+    { include-group = "lint" },
+    { include-group = "typing" },
+    { include-group = "tox" },
 ]
 
 [tool.uv]
 package = true
-required-version = ">=0.11.32"
+required-version = ">=0.13.4"
 
 [tool.uv.build-backend]
 module-name = "update_gha"
+source-include = ["tests/**", "action.yaml", ".python-version", "uv.lock"]
 
 [tool.ruff]
 target-version = "py312"
@@ -78,7 +85,9 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = [
+    "ANN",
     "B",
+    "D",
     "C4",
     "E",
     "F",
@@ -90,6 +99,14 @@ select = [
     "W",
     "YTT",
 ]
+# Class docstrings describe construction; avoid repeating them on __init__.
+ignore = ["D107"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["update_gha"]
@@ -103,27 +120,19 @@ docstring-code-format = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = [
-    "-q",
-    "--cov",
-    "--cov-report=term-missing",
-    "--cov-fail-under=100",
-]
+filterwarnings = ["error"]
+addopts = ["-q", "--import-mode=importlib"]
 
 [tool.coverage.run]
 branch = true
 source_pkgs = ["update_gha"]
-omit = ["*/__main__.py"]
 
 [tool.coverage.report]
 fail_under = 100
 show_missing = true
 skip_covered = true
-exclude_lines = [
-    "pragma: no cover",
-    "\\.\\.\\.",
-    "assert_never\\(",
-]
+# Exclude only non-executable protocol stub bodies.
+exclude_lines = ["^\\s*\\.\\.\\.\\s*$"]
 
 [tool.mypy]
 strict = true
@@ -133,6 +142,84 @@ explicit_package_bases = true
 files = ["src", "tests"]
 plugins = ["pydantic.mypy"]
 warn_unused_ignores = true
+disallow_any_explicit = true
+disallow_any_generics = true
+disallow_any_unimported = true
 
 [tool.pydantic-mypy]
 init_typed = true
+init_forbid_extra = true
+
+[tool.tox]
+requires = ["tox>=4.67.1", "tox-uv-bare>=1.37.0"]
+env_list = [
+    "py312", "py313", "py314", "py315", "base", "lint", "type", "coverage",
+    "package", "minimum", "latest",
+]
+skip_missing_interpreters = false
+
+[tool.tox.env_run_base]
+runner = "uv-venv-lock-runner"
+package = "wheel"
+base_python = ["python3.14"]
+no_default_groups = true
+uv_sync_locked = true
+uv_python_preference = "managed"
+pass_env = ["UV_CACHE_DIR", "UV_PYTHON_INSTALL_DIR", "TOX_UV_PATH"]
+dependency_groups = ["test"]
+extras = ["action"]
+commands = [["python", "-m", "pytest", "{posargs:tests}"]]
+
+[tool.tox.env.py312]
+base_python = ["python3.12"]
+[tool.tox.env.py313]
+base_python = ["python3.13"]
+[tool.tox.env.py314]
+base_python = ["python3.14"]
+[tool.tox.env.py315]
+base_python = ["python3.15"]
+
+[tool.tox.env.base]
+extras = []
+commands = [
+    ["python", "-I", "tests/smoke_test.py", "base"],
+    ["python", "-m", "pytest", "--ignore=tests/action"],
+]
+
+[tool.tox.env.lint]
+dependency_groups = ["lint"]
+extras = []
+commands = [["ruff", "check", "."], ["ruff", "format", "--check", "."]]
+
+[tool.tox.env.type]
+dependency_groups = ["typing", "test"]
+commands = [["mypy"]]
+
+[tool.tox.env.coverage]
+commands = [[
+    "python", "-m", "pytest", "--cov", "--cov-branch",
+    "--cov-report=term-missing", "--cov-fail-under=100",
+]]
+
+[tool.tox.env.package]
+dependency_groups = []
+extras = []
+allowlist_externals = ["uv"]
+commands = [
+    ["uv", "build", "--no-sources", "--out-dir", "{env_tmp_dir}/dist"],
+    ["python", "-m", "tests.packaging.check", "{env_tmp_dir}/dist"],
+]
+
+[tool.tox.env.minimum]
+runner = "uv-venv-runner"
+base_python = ["python3.12"]
+uv_resolution = "lowest-direct"
+# Re-resolve packages installed transitively by the test tools as well.
+install_command = ["{env:TOX_UV_PATH:uv}", "pip", "install", "--upgrade", "{opts}", "{packages}"]
+recreate = true
+
+[tool.tox.env.latest]
+runner = "uv-venv-runner"
+base_python = ["python3.15"]
+uv_resolution = "highest"
+recreate = true

@@ -7,9 +7,21 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+rc[0-9]+"
       - "v[0-9]+.[0-9]+.[0-9]+[ab][0-9]+"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  tests:
+    uses: ./.github/workflows/ci.yaml
+
   build:
+    needs: tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -22,53 +34,48 @@ jobs:
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           enable-cache: false
-          version: "0.11.32"
+          version: "0.13.4"
+          python-version: "3.14"
 
-      - name: Verify tag matches package version
-        shell: bash
-        run: |
-          package_version="$(uv version --short)"
-          if [[ "${GITHUB_REF_NAME}" != "v${package_version}" ]]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match package version ${package_version}." >&2
-            exit 1
-          fi
+      - name: Install the artifact checker
+        run: uv sync --locked --no-default-groups
+
+      - name: Verify tag, package version and PyPI action pin
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: uv run --no-sync python -m tests.packaging.check --release "$RELEASE_TAG"
 
       - name: Build
         run: uv build --no-sources
 
-      - name: Smoke test (wheel)
-        run: |
-          uv run --isolated --no-project --with dist/*.whl tests/smoke_test.py
-          uv run --isolated --no-project --with dist/*.whl update-gha --version
-
-      - name: Smoke test (source distribution)
-        run: |
-          uv run --isolated --no-project --with dist/*.tar.gz tests/smoke_test.py
-          uv run --isolated --no-project --with dist/*.tar.gz update-gha --version
+      - name: Verify wheel and source distribution
+        run: uv run --no-sync python -m tests.packaging.check
 
       - name: Upload distributions
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist
           path: dist/
+          if-no-files-found: error
 
   publish:
     needs:
       - build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: pypi
       url: https://pypi.org/p/update-gha
     permissions:
       id-token: write
       contents: read
-      attestations: write
     steps:
       - name: Install uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           enable-cache: false
-          version: "0.11.32"
+          version: "0.13.4"
+          python-version: "3.14"
 
       - name: Download distributions
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -80,4 +87,29 @@ jobs:
         uses: astral-sh/attest-action@f589a42a7efb6fe400b4f400de60b4bc90390027 # v0.0.6
 
       - name: Publish
-        run: uv publish
+        run: uv publish --trusted-publishing always dist/*
+
+  verify:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: false
+          version: "0.13.4"
+          python-version: "3.14"
+      - name: Verify published action entry point
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          for attempt in 1 2 3 4 5; do
+            if uv --no-config tool run --isolated --no-env-file --no-cache \
+              --managed-python --python 3.14 --default-index https://pypi.org/simple \
+              --from "update-gha[action]==${version}" update-gha --version; then
+              exit 0
+            fi
+            sleep 15
+          done
+          exit 1
