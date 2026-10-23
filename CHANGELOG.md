@@ -1,5 +1,11 @@
 # Version: v1.0.2
 
+* [#128](https://github.com/saadmk11/github-actions-version-updater/pull/128): [pre-commit.ci] pre-commit autoupdate
+* [#129](https://github.com/saadmk11/github-actions-version-updater/pull/129): [pre-commit.ci] pre-commit autoupdate
+
+
+# Version: v1.0.2
+
 * Install `update-gha[action]==1.0.2` from PyPI in an isolated CPython 3.14 environment.
 * Replace Requests with HTTPX2 2.12 or newer, using pooled lookups, explicit timeouts, same-origin redirects, and sanitized connection errors.
 * Require GitPython 3.2.1 or newer for the `[action]` extra to include its security fixes.
