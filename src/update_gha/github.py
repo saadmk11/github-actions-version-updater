@@ -5,7 +5,7 @@ from collections.abc import Callable, Mapping
 from typing import Protocol, assert_never
 from urllib.parse import quote, urljoin
 
-import httpx
+import httpx2
 from packaging.version import InvalidVersion, Version
 from pydantic import TypeAdapter, ValidationError
 
@@ -109,14 +109,19 @@ class _ResponseAdapter:
         return self._headers.get(name.lower())
 
 
-class _HttpxSession:
-    """Adapt a pooled HTTPX client with explicit timeouts to ``HttpSession``."""
+class _Httpx2Session:
+    """Adapt a pooled HTTPX2 client with explicit timeouts to ``HttpSession``."""
 
     def __init__(self) -> None:
-        self._inner = httpx.Client(
-            timeout=httpx.Timeout(HTTP_TIMEOUT_SECONDS, connect=10),
-            follow_redirects=False,
-        )
+        try:
+            self._inner = httpx2.Client(
+                timeout=httpx2.Timeout(HTTP_TIMEOUT_SECONDS, connect=10),
+                follow_redirects=False,
+            )
+        except (httpx2.InvalidURL, ValueError) as exc:
+            raise GitHubAPIError(
+                f"Could not initialize GitHub client ({type(exc).__name__})."
+            ) from exc
 
     def get(self, url: str, headers: dict[str, str] | None = None) -> HttpResponse:
         """Fetch a URL with optional authentication headers."""
@@ -142,9 +147,9 @@ class GitHubClient:
         self._token = token
         self._reporter = reporter
         self._sleeper: SleepFn = sleeper if sleeper is not None else time.sleep
-        self._owned_session: _HttpxSession | None
+        self._owned_session: _Httpx2Session | None
         if session is None:
-            self._owned_session = _HttpxSession()
+            self._owned_session = _Httpx2Session()
             self._session: HttpSession = self._owned_session
         else:
             self._owned_session = None
@@ -231,7 +236,7 @@ class GitHubClient:
         for _ in range(MAX_REDIRECTS + 1):
             try:
                 response = self._session.get(url, headers=request_headers(self._token))
-            except (httpx.HTTPError, httpx.InvalidURL) as exc:
+            except (httpx2.HTTPError, httpx2.InvalidURL) as exc:
                 raise GitHubAPIError(
                     f"Could not reach GitHub ({type(exc).__name__})."
                 ) from exc
@@ -489,14 +494,14 @@ def redirect_target(url: str, location: str | None, api_url: str) -> str:
 
 def _same_origin(url: str, expected: str) -> bool:
     try:
-        actual = httpx.URL(url)
-        trusted = httpx.URL(expected)
+        actual = httpx2.URL(url)
+        trusted = httpx2.URL(expected)
         return not actual.userinfo and (actual.scheme, actual.host, actual.port) == (
             trusted.scheme,
             trusted.host,
             trusted.port,
         )
-    except httpx.InvalidURL:
+    except httpx2.InvalidURL:
         return False
 
 

@@ -41,6 +41,7 @@ from update_gha.github import GitHubAPIError
 from update_gha.log import (
     Verbosity,
     configure_logging,
+    echo_report,
     get_reporter,
 )
 from update_gha.models import OutputFormat
@@ -49,7 +50,7 @@ from update_gha.scan import render_diff, run_update
 
 def _version_callback(value: bool) -> None:
     if value:
-        typer.echo(__version__)
+        echo_report(__version__)
         raise typer.Exit(0)
 
 
@@ -177,18 +178,18 @@ def main(
 
     try:
         report = run_update(config, reporter=reporter)
-    except OSError as exc:
+    except (GitHubAPIError, OSError) as exc:
         reporter.error(str(exc))
         raise typer.Exit(1) from exc
 
     if config.output_format is OutputFormat.JSON:
-        typer.echo(report.model_dump_json(indent=2))
+        echo_report(report.model_dump_json(indent=2), json_output=True)
     else:
-        typer.echo(report.text_summary())
+        echo_report(report.text_summary())
         if config.show_diff:
             for file_update in report.files:
                 if file_update.changed:
-                    typer.echo(render_diff(file_update), nl=False)
+                    echo_report(render_diff(file_update), nl=False)
 
     if config.check and report.has_updates:
         raise typer.Exit(1)

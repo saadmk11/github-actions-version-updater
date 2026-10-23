@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
 import runpy
-import subprocess
-import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -410,27 +407,6 @@ def test_json_stdout_is_clean_on_github_actions(
     assert "progress" in result.stderr
 
 
-def test_json_stdout_stays_clean_with_utility_subprocess_setting(
-    tmp_path: Path,
-) -> None:
-    env = {
-        name: value
-        for name, value in os.environ.items()
-        if not name.startswith(("GITHUB_", "GHA_UPDATE_"))
-    }
-    env.update(GITHUB_ACTIONS="true", COMMANDS_USE_SUBPROCESS="1")
-    result = subprocess.run(
-        [sys.executable, "-m", "update_gha", "--dry-run", "--format", "json"],
-        cwd=tmp_path,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    assert json.loads(result.stdout) == {"files": [], "wrote": False}
-    assert "No workflow files found" in result.stderr
-
-
 def test_oserror_from_run_update_exits_one(monkeypatch: pytest.MonkeyPatch) -> None:
     def boom(_config: Configuration, *, reporter: Reporter) -> None:
         raise OSError("disk")
@@ -531,6 +507,63 @@ def test_diff_prints_changed_files(
     assert "same.yml" not in result.stdout
 
 
+@pytest.mark.parametrize("github_actions", [False, True])
+@pytest.mark.parametrize("output", ["text", "diff", "json"])
+@pytest.mark.parametrize(
+    ("location", "filename"),
+    [
+        (
+            "actions/checkout/subdir##[add-mask]hidden",
+            "workflow\n::add-mask::hidden.yml",
+        ),
+        (
+            "actions/checkout/subdir#\x1b[0m#[add-mask]hidden",
+            "workflow\n:\x1b[0m:add-mask:\x1b[0m:hidden.yml",
+        ),
+    ],
+)
+def test_report_output_cannot_inject_workflow_commands(
+    output: str,
+    github_actions: bool,
+    location: str,
+    filename: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if github_actions:
+        monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    report = _report(tmp_path, changed=True, wrote=False)
+    original = "# ##[add-mask]hidden\n- uses: actions/checkout@v3\n"
+    action = report.files[0].actions[0].model_copy(update={"location": location})
+    report = UpdateReport(
+        files=(
+            FileUpdate(
+                path=tmp_path / filename,
+                original=original,
+                updated=original.replace("@v3", "@v4"),
+                actions=(action,),
+            ),
+        ),
+    )
+    monkeypatch.setattr(_RUN_UPDATE, lambda _config, **_kwargs: report)
+    options = ["--dry-run"]
+    if output == "diff":
+        options.append("--diff")
+    elif output == "json":
+        options.extend(["--format", "json"])
+    result = runner.invoke(app, options)
+    assert result.exit_code == 0
+    if output == "json":
+        assert json.loads(result.stdout) == report.model_dump(mode="json")
+    if github_actions:
+        assert "##[" not in result.stdout
+        assert not any(
+            line.lstrip().startswith("::") for line in result.stdout.splitlines()
+        )
+    else:
+        assert "##[add-mask]hidden" in result.stdout
+
+
 @pytest.mark.parametrize("run_name", ["__main__", "imported_entrypoint"])
 def test_module_entrypoint_dispatches_only_when_executed(
     run_name: str,
@@ -540,3 +573,28 @@ def test_module_entrypoint_dispatches_only_when_executed(
     monkeypatch.setattr("update_gha.cli.app", lambda: called.append(True))
     runpy.run_module("update_gha.__main__", run_name=run_name)
     assert called == ([True] if run_name == "__main__" else [])
+
+
+@pytest.mark.parametrize(
+    ("proxy", "error"),
+    [
+        ("socks6://private-user:private-password@proxy.invalid", "ValueError"),
+        ("https://private-user:private-password@proxy.invalid:bad", "InvalidURL"),
+    ],
+)
+def test_invalid_proxy_has_a_safe_startup_error(
+    proxy: str, error: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for variable in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"):
+        monkeypatch.delenv(variable, raising=False)
+        monkeypatch.delenv(variable.lower(), raising=False)
+    monkeypatch.setenv("HTTPS_PROXY", proxy)
+    monkeypatch.setenv("GHA_UPDATE_TOKEN", "ghs_private_fixture_token")
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["--dry-run"])
+    assert result.exit_code == 1
+    assert f"Could not initialize GitHub client ({error})." in result.stderr
+    assert "private-user" not in result.stderr
+    assert "private-password" not in result.stderr
+    assert "ghs_private_fixture_token" not in result.stderr
+    assert "Traceback" not in result.stderr

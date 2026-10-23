@@ -4,11 +4,13 @@ import logging
 import os
 import sys
 from collections.abc import Generator
-from contextlib import AbstractContextManager, contextmanager, redirect_stdout
+from contextlib import AbstractContextManager, contextmanager
 from enum import IntEnum
+from io import TextIOWrapper
 from typing import Protocol, TextIO, override
 
 import github_action_utils as gha
+import typer
 
 LOGGER_NAME = "update_gha"
 
@@ -52,6 +54,18 @@ class Reporter(Protocol):
 def running_on_github_actions() -> bool:
     """Return whether GitHub Actions reporting is enabled."""
     return gha.is_github_action()
+
+
+def echo_report(message: str, *, json_output: bool = False, nl: bool = True) -> None:
+    """Print report output without triggering runner commands."""
+    if running_on_github_actions():
+        # JSON escapes preserve decoded values while hiding legacy command markers.
+        message = (
+            message.replace("##[", r"\u0023\u0023[")
+            if json_output
+            else _escape_workflow_text(message)
+        )
+    typer.echo(message, nl=nl)
 
 
 def configure_logging(
@@ -125,17 +139,26 @@ class CliReporter:
         yield
 
 
-@contextmanager
-def _workflow_stream(stream: TextIO) -> Generator[None]:
-    """Keep utility commands on the selected stream, including JSON's stderr."""
-    use_subprocess = gha.COMMANDS_USE_SUBPROCESS
-    try:
-        # Child processes inherit OS stdout and bypass redirect_stdout.
-        gha.COMMANDS_USE_SUBPROCESS = False
-        with redirect_stdout(stream):
-            yield
-    finally:
-        gha.COMMANDS_USE_SUBPROCESS = use_subprocess
+def _escape_workflow_message(message: str) -> str:
+    return message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def _escape_workflow_text(message: str) -> str:
+    """Prevent plain text from triggering modern or legacy runner commands."""
+    # ANSI stripping must not join separated command markers.
+    return (
+        message.replace("\x1b", "%1B").replace("::", "%3A%3A").replace("##[", "%23%23[")
+    )
+
+
+def _write_workflow_line(stream: TextIO, message: str) -> None:
+    # The runner consumes UTF-8 even when a Windows text stream uses another encoding.
+    if isinstance(stream, TextIOWrapper):
+        stream.flush()
+        stream.buffer.write((message + "\n").encode("utf-8"))
+        stream.flush()
+    else:
+        print(message, file=stream, flush=True)
 
 
 class GitHubActionsHandler(logging.Handler):
@@ -148,22 +171,17 @@ class GitHubActionsHandler(logging.Handler):
     @override
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            message = self.format(record)
-            with _workflow_stream(self._stream):
-                match record.levelno:
-                    case level if level >= logging.ERROR:
-                        gha.error(message)
-                    case level if level >= logging.WARNING:
-                        gha.warning(message)
-                    case level if level >= logging.INFO:
-                        gha.notice(message)
-                    case _:
-                        # echo() prints raw text, so escape workflow-command characters.
-                        gha.echo(
-                            message.replace("%", "%25")
-                            .replace("\r", "%0D")
-                            .replace("\n", "%0A")
-                        )
+            message = _escape_workflow_message(self.format(record))
+            match record.levelno:
+                case level if level >= logging.ERROR:
+                    message = f"::error::{message}"
+                case level if level >= logging.WARNING:
+                    message = f"::warning::{message}"
+                case level if level >= logging.INFO:
+                    message = f"::notice::{message}"
+                case _:
+                    message = _escape_workflow_text(message)
+            _write_workflow_line(self._stream, message)
         except Exception:
             self.handleError(record)
 
@@ -179,8 +197,7 @@ class GitHubActionsReporter:
         """Report progress at the normal verbosity level."""
         if not self._logger.isEnabledFor(logging.INFO):
             return
-        with _workflow_stream(self._stream):
-            gha.echo(message)
+        _write_workflow_line(self._stream, _escape_workflow_text(message))
 
     def notice(self, message: str) -> None:
         """Report a user-facing informational notice."""
@@ -205,11 +222,11 @@ class GitHubActionsReporter:
         """Group related progress messages and close the group on failure."""
         enabled = self._logger.isEnabledFor(logging.INFO)
         if enabled:
-            with _workflow_stream(self._stream):
-                gha.start_group(title)
+            _write_workflow_line(
+                self._stream, f"::group::{_escape_workflow_message(title)}"
+            )
         try:
             yield
         finally:
             if enabled:
-                with _workflow_stream(self._stream):
-                    gha.end_group()
+                _write_workflow_line(self._stream, "::endgroup::")

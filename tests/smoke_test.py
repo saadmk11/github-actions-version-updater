@@ -8,7 +8,7 @@ from contextlib import chdir
 from pathlib import Path
 from unittest.mock import patch
 
-import httpx
+import httpx2
 from pydantic import JsonValue, TypeAdapter
 from typer.testing import CliRunner
 
@@ -25,15 +25,15 @@ def main() -> None:
     action_extra = len(sys.argv) > 1 and sys.argv[1] == "action"
     assert has_action_extra() is action_extra
     sha = "a" * 40
-    seen: list[httpx.Request] = []
+    seen: list[httpx2.Request] = []
 
-    def respond(request: httpx.Request) -> httpx.Response:
+    def respond(request: httpx2.Request) -> httpx2.Response:
         seen.append(request)
         assert request.method == "GET"
         assert request.headers["Authorization"] == "Bearer test-token"
         match request.url.path:
             case "/repos/owner/action/releases":
-                return httpx.Response(
+                return httpx2.Response(
                     200,
                     json=[
                         {
@@ -45,7 +45,7 @@ def main() -> None:
                 )
             case "/repos/owner/action/commits":
                 assert request.url.params["sha"] == "v2"
-                return httpx.Response(
+                return httpx2.Response(
                     200,
                     json=[
                         {
@@ -58,13 +58,15 @@ def main() -> None:
             case _:
                 raise AssertionError(f"Unexpected request: {request.url}")
 
-    client_factory = httpx.Client
+    client_factory = httpx2.Client
 
-    def make_client(*, timeout: httpx.Timeout, follow_redirects: bool) -> httpx.Client:
+    def make_client(
+        *, timeout: httpx2.Timeout, follow_redirects: bool
+    ) -> httpx2.Client:
         return client_factory(
             timeout=timeout,
             follow_redirects=follow_redirects,
-            transport=httpx.MockTransport(respond),
+            transport=httpx2.MockTransport(respond),
         )
 
     runner = CliRunner()
@@ -79,7 +81,7 @@ def main() -> None:
             b"      - uses: 'owner/action@v1'\r\n"
         )
         workflow.write_bytes(original)
-        with patch("update_gha.github.httpx.Client", make_client):
+        with patch("update_gha.github.httpx2.Client", make_client):
             result = runner.invoke(
                 app,
                 [

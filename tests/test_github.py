@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
-import httpx
+import httpx2
 import pytest
 from pydantic import JsonValue
 
@@ -439,11 +439,11 @@ def test_owned_session_close_is_idempotent() -> None:
     assert owned._owned_session is None
 
 
-def test_owned_session_uses_httpx_transport(monkeypatch: pytest.MonkeyPatch) -> None:
-    client_factory = httpx.Client
-    seen: list[httpx.Request] = []
+def test_owned_session_uses_httpx2_transport(monkeypatch: pytest.MonkeyPatch) -> None:
+    client_factory = httpx2.Client
+    seen: list[httpx2.Request] = []
 
-    def respond(request: httpx.Request) -> httpx.Response:
+    def respond(request: httpx2.Request) -> httpx2.Response:
         seen.append(request)
         assert request.extensions["timeout"] == {
             "connect": 10,
@@ -451,19 +451,19 @@ def test_owned_session_uses_httpx_transport(monkeypatch: pytest.MonkeyPatch) -> 
             "write": 30,
             "pool": 30,
         }
-        return httpx.Response(200, json=[])
+        return httpx2.Response(200, json=[])
 
-    def factory(*, timeout: httpx.Timeout, follow_redirects: bool) -> httpx.Client:
+    def factory(*, timeout: httpx2.Timeout, follow_redirects: bool) -> httpx2.Client:
         assert follow_redirects is False
-        assert isinstance(timeout, httpx.Timeout)
+        assert isinstance(timeout, httpx2.Timeout)
         assert timeout.connect == 10 and timeout.read == 30
         return client_factory(
             timeout=timeout,
             follow_redirects=follow_redirects,
-            transport=httpx.MockTransport(respond),
+            transport=httpx2.MockTransport(respond),
         )
 
-    monkeypatch.setattr("update_gha.github.httpx.Client", factory)
+    monkeypatch.setattr("update_gha.github.httpx2.Client", factory)
     client = GitHubClient("token-token", silent_reporter())
     try:
         assert (
@@ -805,15 +805,15 @@ def test_non_sha_commit_ref_with_restricted_types_is_skipped() -> None:
     )
 
 
-@pytest.mark.parametrize("error", [httpx.ConnectError, httpx.InvalidURL])
+@pytest.mark.parametrize("error", [httpx2.ConnectError, httpx2.InvalidURL])
 def test_transport_error_becomes_github_api_error(
-    error: type[httpx.ConnectError | httpx.InvalidURL],
+    error: type[httpx2.ConnectError | httpx2.InvalidURL],
 ) -> None:
     class BoomSession:
         def get(self, url: str, headers: dict[str, str] | None = None) -> HttpResponse:
-            raise error("offline")
+            raise error("private-token and internal-proxy-host")
 
-    with pytest.raises(GitHubAPIError, match="Could not reach GitHub"):
+    with pytest.raises(GitHubAPIError) as caught:
         GitHubClient(
             "token-token", silent_reporter(), session=BoomSession()
         ).resolve_new_version(
@@ -822,6 +822,7 @@ def test_transport_error_becomes_github_api_error(
             UpdateVersionWith.LATEST_RELEASE_TAG,
             ALL_RELEASE_TYPES,
         )
+    assert str(caught.value) == f"Could not reach GitHub ({error.__name__})."
 
 
 def test_redirect_to_renamed_repository_is_followed() -> None:

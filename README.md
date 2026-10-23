@@ -57,8 +57,6 @@ Add a workflow to this repository. On a schedule (or when you run it by hand) th
 
 The action installs `update-gha[action]==1.0.2` from PyPI in an isolated CPython 3.14 environment and runs `update-gha --pull-request`. It ignores the consuming repository's Python environment and package-index settings.
 
-Local checkouts (`uses: ./`) also install the pinned PyPI release. Publish that version before running the action.
-
 v1 is not a Docker image. Self-hosted runners need bash and outbound network so uv can install that isolated interpreter; Docker is not required.
 
 ### What it does
@@ -303,7 +301,7 @@ If the repository uses [Git LFS](https://git-lfs.github.com/), check out with `l
 
 ### Install
 
-Supports **Python 3.12–3.15**.
+Requires **Python 3.12+**.
 
 ```bash
 # one-off
@@ -318,7 +316,7 @@ uv run update-gha --check
 uv tool install update-gha
 ```
 
-Pull-request mode needs the optional GitPython integration. Install the extra when using `--pull-request`:
+Install the `[action]` extra for `--pull-request` support:
 
 ```bash
 pip install 'update-gha[action]'
@@ -391,8 +389,6 @@ pull_request_title = "Update GitHub Action versions"
 
 You can also enable pull-request mode with `GHA_UPDATE_CREATE_PULL_REQUEST=true`. Commit and PR fields (`committer_*`, `pull_request_*`, reviewers, labels) are ignored unless that flag or environment variable is on.
 
-For custom CA certificates, set `SSL_CERT_FILE` to a certificate bundle or `SSL_CERT_DIR` to an OpenSSL certificate directory. `REQUESTS_CA_BUNDLE` is not supported by HTTPX.
-
 ### CLI options
 
 | Option | Purpose | Default |
@@ -430,7 +426,7 @@ The package lives in `src/update_gha`. Tests are in `tests/`. Tooling is configu
 
 ### Prerequisites
 
-- Python **3.12–3.15** (CI covers every supported version; `.python-version` is `3.14`)
+- Python **3.12+** (CI tests 3.12–3.15; `.python-version` is `3.14`)
 - [uv](https://docs.astral.sh/uv/) **0.13.4** or newer
 
 ### Setup
@@ -497,7 +493,7 @@ uv run ruff format .
 
 ### Pre-commit
 
-[`.pre-commit-config.yaml`](.pre-commit-config.yaml) runs end-of-file / whitespace checks, Ruff, and mypy. The local hooks run the same uv-managed Tox environments as CI and require uv on PATH. Install [pre-commit](https://pre-commit.com/) separately (it is not in the `dev` group):
+[`.pre-commit-config.yaml`](.pre-commit-config.yaml) runs whitespace checks, Ruff, and mypy in isolated hook environments, including on pre-commit.ci. Install [pre-commit](https://pre-commit.com/) separately:
 
 ```bash
 uv tool install pre-commit
@@ -518,8 +514,6 @@ uv run python -m update_gha --check
 1. Set the version in `pyproject.toml`, the exact `[action]` PyPI pin in `action.yaml`, and the documented action references. Run `uv lock` and commit the lockfile with the release changes.
 2. Run `uv run --locked tox` and `uv run --locked python -m tests.packaging.check --release v1.0.2`.
 3. Push the matching release tag (`v1.0.2`). The release workflow runs CI, builds with `uv build --no-sources`, validates the distributions, and uploads them for publication.
-
-Configure the PyPI `update-gha` project’s [GitHub Trusted Publisher](https://docs.pypi.org/trusted-publishers/adding-a-publisher/) with owner `saadmk11`, repository `github-actions-version-updater`, workflow `release.yaml`, and environment `pypi`. Create the matching GitHub environment and set any required reviewers there. Only the publication job receives `id-token: write`; no PyPI API token is needed. It publishes the validated artifacts with `uv publish --trusted-publishing always dist/*`, then verifies the released CLI in an isolated installation. Publish the package before using its matching composite action tag.
 
 ### CI
 

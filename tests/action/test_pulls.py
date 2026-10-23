@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 
-import httpx
+import httpx2
 import pytest
 from pydantic import TypeAdapter
 from tests.action.conftest import make_config
@@ -232,9 +232,9 @@ def test_api_request_requires_token(token: str | None) -> None:
 def test_request_preserves_payload_authentication_and_timeout(
     timeout: float, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    seen: list[httpx.Request] = []
+    seen: list[httpx2.Request] = []
 
-    def respond(request: httpx.Request) -> httpx.Response:
+    def respond(request: httpx2.Request) -> httpx2.Response:
         seen.append(request)
         assert request.method == "POST"
         assert str(request.url) == "https://api.github.com/repos/o/r/pulls"
@@ -246,10 +246,10 @@ def test_request_preserves_payload_authentication_and_timeout(
             "write": timeout,
             "pool": timeout,
         }
-        return httpx.Response(201, text='{"number":42}')
+        return httpx2.Response(201, text='{"number":42}')
 
-    with httpx.Client(transport=httpx.MockTransport(respond)) as api:
-        monkeypatch.setattr("update_gha.action.pulls.httpx.request", api.request)
+    with httpx2.Client(transport=httpx2.MockTransport(respond)) as api:
+        monkeypatch.setattr("update_gha.action.pulls.httpx2.request", api.request)
         assert pulls.request(
             "POST",
             "https://api.github.com/repos/o/r/pulls",
@@ -264,9 +264,9 @@ def test_request_preserves_payload_authentication_and_timeout(
 def test_pull_request_follows_same_origin_redirect_with_body(
     status: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    seen: list[httpx.Request] = []
+    seen: list[httpx2.Request] = []
 
-    def respond(request: httpx.Request) -> httpx.Response:
+    def respond(request: httpx2.Request) -> httpx2.Response:
         seen.append(request)
         assert request.method == "POST"
         assert request.headers["Authorization"] == "Bearer token-token"
@@ -278,16 +278,16 @@ def test_pull_request_follows_same_origin_redirect_with_body(
             "body": "Release notes",
         }
         if request.url.path == "/repos/o/r/pulls":
-            return httpx.Response(
+            return httpx2.Response(
                 status, headers={"Location": "/repos/o/renamed/pulls"}
             )
         assert request.url.path == "/repos/o/renamed/pulls"
-        return httpx.Response(
+        return httpx2.Response(
             201, json={"number": 42, "html_url": "https://github.com/o/renamed/pull/42"}
         )
 
-    with httpx.Client(transport=httpx.MockTransport(respond)) as api:
-        monkeypatch.setattr("update_gha.action.pulls.httpx.request", api.request)
+    with httpx2.Client(transport=httpx2.MockTransport(respond)) as api:
+        monkeypatch.setattr("update_gha.action.pulls.httpx2.request", api.request)
         assert (
             pulls.create_pull_request(
                 make_config(),
@@ -314,14 +314,14 @@ def test_pull_request_redirect_cannot_forward_token_to_another_origin(
     location: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    seen: list[httpx.Request] = []
+    seen: list[httpx2.Request] = []
 
-    def respond(request: httpx.Request) -> httpx.Response:
+    def respond(request: httpx2.Request) -> httpx2.Response:
         seen.append(request)
-        return httpx.Response(307, headers={"Location": location})
+        return httpx2.Response(307, headers={"Location": location})
 
-    with httpx.Client(transport=httpx.MockTransport(respond)) as api:
-        monkeypatch.setattr("update_gha.action.pulls.httpx.request", api.request)
+    with httpx2.Client(transport=httpx2.MockTransport(respond)) as api:
+        monkeypatch.setattr("update_gha.action.pulls.httpx2.request", api.request)
         with pytest.raises(GitHubAPIError, match="unexpected redirect origin"):
             pulls.request(
                 "POST",
@@ -333,22 +333,23 @@ def test_pull_request_redirect_cannot_forward_token_to_another_origin(
 
 
 def test_pull_request_redirect_loop_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
-    seen: list[httpx.Request] = []
+    seen: list[httpx2.Request] = []
 
-    def respond(request: httpx.Request) -> httpx.Response:
+    def respond(request: httpx2.Request) -> httpx2.Response:
         seen.append(request)
         assert len(seen) <= 10
-        return httpx.Response(307, headers={"Location": str(request.url)})
+        return httpx2.Response(307, headers={"Location": str(request.url)})
 
-    with httpx.Client(transport=httpx.MockTransport(respond)) as api:
-        monkeypatch.setattr("update_gha.action.pulls.httpx.request", api.request)
+    with httpx2.Client(transport=httpx2.MockTransport(respond)) as api:
+        monkeypatch.setattr("update_gha.action.pulls.httpx2.request", api.request)
         with pytest.raises(GitHubAPIError, match="too many redirects"):
             pulls.request("POST", "https://api.github.com/repos/o/r/pulls", {}, b"{}")
 
 
-@pytest.mark.parametrize("error", [httpx.ConnectError, httpx.InvalidURL])
+@pytest.mark.parametrize("error", [httpx2.ConnectError, httpx2.InvalidURL])
 def test_transport_failure_has_safe_diagnostic(
-    error: type[httpx.ConnectError | httpx.InvalidURL], monkeypatch: pytest.MonkeyPatch
+    error: type[httpx2.ConnectError | httpx2.InvalidURL],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def fail(
         method: str,
@@ -356,12 +357,12 @@ def test_transport_failure_has_safe_diagnostic(
         *,
         headers: dict[str, str],
         content: bytes | None,
-        timeout: httpx.Timeout,
+        timeout: httpx2.Timeout,
         follow_redirects: bool,
-    ) -> httpx.Response:
+    ) -> httpx2.Response:
         raise error("private-token and internal-proxy-host")
 
-    monkeypatch.setattr("update_gha.action.pulls.httpx.request", fail)
+    monkeypatch.setattr("update_gha.action.pulls.httpx2.request", fail)
     with pytest.raises(GitHubAPIError) as caught:
         pulls.request("POST", "https://api.github.com/repos/o/r/pulls", {}, b"{}")
     assert str(caught.value) == f"Could not reach GitHub ({error.__name__})."

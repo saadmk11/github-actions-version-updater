@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 
-import httpx
+import httpx2
 from pydantic import BaseModel, ConfigDict
 
 from update_gha.config import Configuration
@@ -41,15 +41,15 @@ def request(
     api_url = url
     for _ in range(MAX_REDIRECTS + 1):
         try:
-            response = httpx.request(
+            response = httpx2.request(
                 method,
                 url,
                 headers=headers,
                 content=body,
-                timeout=httpx.Timeout(timeout, connect=min(timeout, 10)),
+                timeout=httpx2.Timeout(timeout, connect=min(timeout, 10)),
                 follow_redirects=False,
             )
-        except (httpx.HTTPError, httpx.InvalidURL) as exc:
+        except (httpx2.HTTPError, httpx2.InvalidURL) as exc:
             raise GitHubAPIError(
                 f"Could not reach GitHub ({type(exc).__name__})."
             ) from exc

@@ -4,7 +4,7 @@ import json
 from contextlib import ExitStack
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 from git import Actor, Repo
 from typer.testing import CliRunner
@@ -38,14 +38,14 @@ def test_action_updates_workflows_with_real_git(
             "Keep this out of the update commit.\n"
         )
         output = tmp_path / "output"
-        requests: list[httpx.Request] = []
+        requests: list[httpx2.Request] = []
 
-        def respond(request: httpx.Request) -> httpx.Response:
+        def respond(request: httpx2.Request) -> httpx2.Response:
             requests.append(request)
             assert request.headers["Authorization"] == "Bearer test-token"
             match request.method, request.url.path:
                 case "GET", "/repos/owner/action/releases":
-                    return httpx.Response(
+                    return httpx2.Response(
                         200,
                         json=[
                             {
@@ -61,7 +61,7 @@ def test_action_updates_workflows_with_real_git(
                     assert payload["base"] == "main"
                     assert payload["title"] == "Update dependencies"
                     assert "owner/action" in payload["body"]
-                    return httpx.Response(
+                    return httpx2.Response(
                         201,
                         json={
                             "number": 42,
@@ -70,23 +70,25 @@ def test_action_updates_workflows_with_real_git(
                     )
                 case "POST", "/repos/owner/repo/pulls/42/requested_reviewers":
                     assert json.loads(request.content) == {"reviewers": ["alice"]}
-                    return httpx.Response(201, json={})
+                    return httpx2.Response(201, json={})
                 case "POST", "/repos/owner/repo/issues/42/labels":
                     assert json.loads(request.content) == {"labels": ["dependencies"]}
-                    return httpx.Response(200, json=[])
+                    return httpx2.Response(200, json=[])
                 case _:
                     pytest.fail(
                         f"Unexpected API request: {request.method} {request.url}"
                     )
 
-        client_factory = httpx.Client
+        client_factory = httpx2.Client
 
-        def factory(*, timeout: httpx.Timeout, follow_redirects: bool) -> httpx.Client:
-            return client_factory(transport=httpx.MockTransport(respond))
+        def factory(
+            *, timeout: httpx2.Timeout, follow_redirects: bool
+        ) -> httpx2.Client:
+            return client_factory(transport=httpx2.MockTransport(respond))
 
-        with client_factory(transport=httpx.MockTransport(respond)) as api:
-            monkeypatch.setattr("update_gha.github.httpx.Client", factory)
-            monkeypatch.setattr("update_gha.action.pulls.httpx.request", api.request)
+        with client_factory(transport=httpx2.MockTransport(respond)) as api:
+            monkeypatch.setattr("update_gha.github.httpx2.Client", factory)
+            monkeypatch.setattr("update_gha.action.pulls.httpx2.request", api.request)
             monkeypatch.chdir(workspace)
             result = CliRunner().invoke(
                 app,
