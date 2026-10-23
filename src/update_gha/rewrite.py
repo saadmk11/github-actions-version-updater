@@ -15,7 +15,7 @@ _BLOCK_SCALAR_STYLES = frozenset({"|", ">"})
 
 
 def actions_from_spans(spans: tuple[UsesSpan, ...]) -> frozenset[str]:
-    """Unique ``uses`` values from already-parsed spans."""
+    """Return unique ``uses`` values from already-parsed spans."""
     return frozenset(action for _start, _end, action, _style in spans)
 
 

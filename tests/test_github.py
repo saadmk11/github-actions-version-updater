@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import cast
 
+import httpx2
 import pytest
-import requests
+from pydantic import JsonValue
 
 from tests.conftest import FakeResponse, FakeSession, silent_reporter
 from update_gha.github import (
@@ -14,6 +16,7 @@ from update_gha.github import (
     HttpResponse,
     _is_full_commit_sha,
     _same_commit,
+    _same_origin,
     error_summary,
     next_page_url,
     parse_version,
@@ -42,7 +45,7 @@ def _release(
     published_at: str | None = "2024-01-01T00:00:00Z",
     draft: bool = False,
     prerelease: bool = False,
-) -> dict[str, str | bool | None]:
+) -> dict[str, JsonValue]:
     return {
         "tag_name": tag,
         "html_url": html_url,
@@ -57,7 +60,7 @@ def _commit(
     *,
     html_url: str = "https://example.com/c",
     date: str = "2024-01-01T00:00:00Z",
-) -> dict[str, object]:
+) -> dict[str, JsonValue]:
     return {
         "sha": sha,
         "html_url": html_url,
@@ -248,7 +251,8 @@ def test_error_summary_empty_invalid_and_blank_message() -> None:
 
 def test_request_headers_include_token_only_when_set() -> None:
     assert request_headers(None) == {
-        "Accept": "application/vnd.github.v3+json",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "update-gha",
     }
     assert request_headers("secret")["Authorization"] == "Bearer secret"
@@ -435,29 +439,32 @@ def test_owned_session_close_is_idempotent() -> None:
     assert owned._owned_session is None
 
 
-def test_owned_session_get_adapts_requests(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _Response:
-        status_code = 200
-        text = "[]"
+def test_owned_session_uses_httpx2_transport(monkeypatch: pytest.MonkeyPatch) -> None:
+    client_factory = httpx2.Client
+    seen: list[httpx2.Request] = []
 
-        def __init__(self) -> None:
-            self.headers = {"X-Test": 1}
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        assert request.extensions["timeout"] == {
+            "connect": 10,
+            "read": 30,
+            "write": 30,
+            "pool": 30,
+        }
+        return httpx2.Response(200, json=[])
 
-    class _Session:
-        def get(
-            self,
-            url: str,
-            headers: dict[str, str] | None = None,
-            timeout: float | None = None,
-        ) -> _Response:
-            _ = (url, headers, timeout)
-            return _Response()
+    def factory(*, timeout: httpx2.Timeout, follow_redirects: bool) -> httpx2.Client:
+        assert follow_redirects is False
+        assert isinstance(timeout, httpx2.Timeout)
+        assert timeout.connect == 10 and timeout.read == 30
+        return client_factory(
+            timeout=timeout,
+            follow_redirects=follow_redirects,
+            transport=httpx2.MockTransport(respond),
+        )
 
-        def close(self) -> None:
-            return None
-
-    monkeypatch.setattr("update_gha.github.requests.Session", _Session)
-    client = GitHubClient("token-token", silent_reporter(), sleeper=lambda _d: None)
+    monkeypatch.setattr("update_gha.github.httpx2.Client", factory)
+    client = GitHubClient("token-token", silent_reporter())
     try:
         assert (
             client.resolve_new_version(
@@ -470,6 +477,9 @@ def test_owned_session_get_adapts_requests(monkeypatch: pytest.MonkeyPatch) -> N
         )
     finally:
         client.close()
+    assert str(seen[0].url) == RELEASES_URL
+    assert seen[0].headers["Authorization"] == "Bearer token-token"
+    assert seen[0].headers["X-GitHub-Api-Version"] == "2022-11-28"
 
 
 def test_resolves_release_commit_sha() -> None:
@@ -795,12 +805,15 @@ def test_non_sha_commit_ref_with_restricted_types_is_skipped() -> None:
     )
 
 
-def test_transport_error_becomes_github_api_error() -> None:
+@pytest.mark.parametrize("error", [httpx2.ConnectError, httpx2.InvalidURL])
+def test_transport_error_becomes_github_api_error(
+    error: type[httpx2.ConnectError | httpx2.InvalidURL],
+) -> None:
     class BoomSession:
         def get(self, url: str, headers: dict[str, str] | None = None) -> HttpResponse:
-            raise requests.ConnectionError("offline")
+            raise error("private-token and internal-proxy-host")
 
-    with pytest.raises(GitHubAPIError, match="Could not reach GitHub"):
+    with pytest.raises(GitHubAPIError) as caught:
         GitHubClient(
             "token-token", silent_reporter(), session=BoomSession()
         ).resolve_new_version(
@@ -808,4 +821,93 @@ def test_transport_error_becomes_github_api_error() -> None:
             "v1",
             UpdateVersionWith.LATEST_RELEASE_TAG,
             ALL_RELEASE_TYPES,
+        )
+    assert str(caught.value) == f"Could not reach GitHub ({error.__name__})."
+
+
+def test_redirect_to_renamed_repository_is_followed() -> None:
+    renamed = "https://api.github.com/repos/new/action/releases?per_page=100"
+    session = FakeSession(
+        {
+            RELEASES_URL: FakeResponse(301, headers={"Location": renamed}),
+            renamed: FakeResponse(200, [_release("v2")]),
+        }
+    )
+    resolved = _client(session).resolve_new_version(
+        "actions/checkout",
+        "v1",
+        UpdateVersionWith.LATEST_RELEASE_TAG,
+        ALL_RELEASE_TYPES,
+    )
+    assert resolved is not None and resolved.version == "v2"
+
+
+@pytest.mark.parametrize("location", ["https://example.com/steal", ""])
+def test_redirects_cannot_leave_api_origin(location: str) -> None:
+    session = FakeSession(
+        {RELEASES_URL: FakeResponse(302, headers={"Location": location})}
+    )
+    with pytest.raises(GitHubAPIError, match="unexpected redirect origin"):
+        _client(session).resolve_new_version(
+            "actions/checkout",
+            "v1",
+            UpdateVersionWith.LATEST_RELEASE_TAG,
+            ALL_RELEASE_TYPES,
+        )
+
+
+def test_redirect_loops_are_bounded() -> None:
+    session = FakeSession(
+        {
+            RELEASES_URL: [
+                FakeResponse(307, headers={"Location": RELEASES_URL}) for _ in range(6)
+            ]
+        }
+    )
+    with pytest.raises(GitHubAPIError, match="too many redirects"):
+        _client(session).resolve_new_version(
+            "actions/checkout",
+            "v1",
+            UpdateVersionWith.LATEST_RELEASE_TAG,
+            ALL_RELEASE_TYPES,
+        )
+
+
+def test_malformed_redirect_url_is_reported() -> None:
+    session = FakeSession(
+        {RELEASES_URL: FakeResponse(302, headers={"Location": "https://[invalid"})}
+    )
+    with pytest.raises(GitHubAPIError, match="invalid redirect URL"):
+        _client(session).resolve_new_version(
+            "actions/checkout",
+            "v1",
+            UpdateVersionWith.LATEST_RELEASE_TAG,
+            ALL_RELEASE_TYPES,
+        )
+
+
+@pytest.mark.parametrize(
+    ("url", "trusted"),
+    [
+        ("https://API.GITHUB.COM:443/path", True),
+        ("https://api.github.com/path", True),
+        ("http://api.github.com/path", False),
+        ("https://api.github.com:8443/path", False),
+        ("https://api.github.com:0/path", False),
+        ("https://user@api.github.com/path", False),
+        ("https://:password@api.github.com/path", False),
+        ("https://api.github.com:invalid/path", False),
+        ("https://[invalid/path", False),
+    ],
+)
+def test_api_origin_validation(url: str, trusted: bool) -> None:
+    assert _same_origin(url, "https://api.github.com") is trusted
+
+
+def test_invalid_update_mode_cannot_silently_skip() -> None:
+    # Exercise callers bypassing validation with an unsupported runtime value.
+    mode = cast(UpdateVersionWith, "unknown-mode")
+    with pytest.raises(AssertionError):
+        _client(FakeSession({})).resolve_new_version(
+            "o/r", "v1", mode, ALL_RELEASE_TYPES
         )

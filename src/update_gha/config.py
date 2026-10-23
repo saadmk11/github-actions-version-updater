@@ -4,7 +4,14 @@ import time
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
-from pydantic import AliasChoices, Field, TypeAdapter, ValidationError, field_validator
+from pydantic import (
+    AliasChoices,
+    Field,
+    SecretStr,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+)
 from pydantic.fields import FieldInfo
 from pydantic_settings import (
     BaseSettings,
@@ -53,6 +60,7 @@ class CsvEnvSettingsSource(EnvSettingsSource):
         value: str | None,
         value_is_complex: bool,
     ) -> str | frozenset[str] | tuple[str, ...] | None:
+        """Normalize collection settings before Pydantic decodes complex values."""
         if field_name in _FROZENSET_FIELDS:
             return frozenset(split_csv(value)) if value else None
         if field_name in _TUPLE_FIELDS:
@@ -80,6 +88,8 @@ class Configuration(BaseSettings):
 
     model_config = SettingsConfigDict(
         frozen=True,
+        hide_input_in_errors=True,
+        populate_by_name=True,
         extra="forbid",
         case_sensitive=False,
         env_prefix="GHA_UPDATE_",
@@ -87,8 +97,9 @@ class Configuration(BaseSettings):
         pyproject_toml_table_header=("tool", "update-gha"),
     )
 
-    token: str | None = Field(
+    token: SecretStr | None = Field(
         default=None,
+        repr=False,
         validation_alias=AliasChoices("token", "GHA_UPDATE_TOKEN", "GITHUB_TOKEN"),
     )
     repository: str | None = Field(
@@ -144,6 +155,7 @@ class Configuration(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Order explicit values, environment, secrets, and project configuration."""
         return (
             init_settings,
             CsvEnvSettingsSource(settings_cls),
@@ -155,6 +167,7 @@ class Configuration(BaseSettings):
     @field_validator("release_types", mode="before")
     @classmethod
     def normalize_release_types(cls, value: object) -> frozenset[str]:
+        """Normalize release filters, expanding all and rejecting empty selections."""
         if isinstance(value, str):
             parsed = split_csv(value)
         elif isinstance(value, (frozenset, set, list, tuple)) and all(
@@ -174,6 +187,7 @@ class Configuration(BaseSettings):
     @field_validator("ignore_actions", "extra_workflow_locations", mode="before")
     @classmethod
     def normalize_string_set(cls, value: object) -> frozenset[str]:
+        """Normalize CSV or string collections into an immutable set."""
         if value is None or value == "":
             return frozenset()
         if isinstance(value, str):
@@ -187,6 +201,7 @@ class Configuration(BaseSettings):
     @field_validator("user_reviewers", "team_reviewers", "labels", mode="before")
     @classmethod
     def normalize_string_tuple(cls, value: object) -> tuple[str, ...]:
+        """Normalize CSV or string collections while preserving reviewer order."""
         if value is None or value == "":
             return ()
         if isinstance(value, str):
@@ -198,11 +213,12 @@ class Configuration(BaseSettings):
         raise ValueError("Expected a comma-separated value or list of strings")
 
     def should_write(self) -> bool:
-        """True unless writing is off (``--check`` / ``--dry-run``)."""
+        """Return True unless writing is off (``--check`` / ``--dry-run``)."""
         return self.write and not self.check and not self.dry_run
 
     @property
     def author(self) -> str:
+        """Return the Git author identity used for update commits."""
         return f"{self.committer_username} <{self.committer_email}>"
 
     @property
@@ -259,7 +275,7 @@ def configuration_from_cli(
     labels: str | None = None,
 ) -> Configuration:
     """Apply only the CLI values that were actually passed."""
-    data: dict[str, object] = {
+    data: dict[str, str | bool | frozenset[str]] = {
         key: value
         for key, value in {
             "token": token,

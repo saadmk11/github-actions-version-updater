@@ -14,7 +14,8 @@ from tests.conftest import (
     write_workflow,
 )
 from update_gha.config import Configuration
-from update_gha.github import GitHubAPIError, GitHubClient
+from update_gha.github import GitHubAPIError, GitHubClient, HttpSession
+from update_gha.log import Reporter
 from update_gha.models import (
     CommitInfo,
     ReleaseInfo,
@@ -349,7 +350,12 @@ def test_run_update_creates_and_closes_owned_client(
     closed: list[bool] = []
 
     class Tracking(GitHubClient):
-        def __init__(self, *args: object, **kwargs: object) -> None:
+        def __init__(
+            self,
+            token: str | None,
+            reporter: Reporter,
+            session: HttpSession | None = None,
+        ) -> None:
             super().__init__("t", silent_reporter(), session=FakeSession({}))
             closed.append(False)
 

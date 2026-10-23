@@ -4,14 +4,20 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+from pydantic import JsonValue
 
 from update_gha.github import HttpResponse
 from update_gha.log import CliReporter
+
+if TYPE_CHECKING:
+    from update_gha.action.run import PullRequestContext
 
 
 @pytest.fixture(autouse=True)
@@ -21,20 +27,13 @@ def _never_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def _isolate_github_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep GitHub Actions job env from leaking into Configuration and logging."""
-    for name in (
-        "GITHUB_ACTIONS",
-        "GITHUB_REF",
-        "GITHUB_REF_NAME",
-        "GITHUB_BASE_REF",
-        "GITHUB_OUTPUT",
-        "GITHUB_REPOSITORY",
-        "GITHUB_TOKEN",
-        "GITHUB_STEP_SUMMARY",
-        "FORCE_COLOR",
-        "CLICOLOR_FORCE",
-    ):
-        monkeypatch.delenv(name, raising=False)
+    """Isolate configuration and logging from the caller's environment."""
+    for name in tuple(os.environ):
+        if name.startswith(("GITHUB_", "GHA_UPDATE_")) or name in {
+            "FORCE_COLOR",
+            "CLICOLOR_FORCE",
+        }:
+            monkeypatch.delenv(name)
     monkeypatch.setenv("NO_COLOR", "1")
     monkeypatch.setenv("COLUMNS", "200")
 
@@ -43,7 +42,7 @@ class FakeResponse:
     def __init__(
         self,
         status_code: int,
-        payload: str | Sequence[object] | Mapping[str, object] = "",
+        payload: str | Sequence[JsonValue] | Mapping[str, JsonValue] = "",
         headers: Mapping[str, str] | None = None,
     ) -> None:
         self.status_code = status_code
@@ -111,3 +110,13 @@ def write_workflow(tmp_path: Path, name: str, content: str) -> Path:
     path = workflow_dir / name
     path.write_text(content, encoding="utf-8")
     return path
+
+
+def pull_request_context(tmp_path: Path) -> PullRequestContext:
+    from git import Repo
+
+    from update_gha.action.run import PullRequestContext
+
+    return PullRequestContext(
+        repo=Repo.init(tmp_path), head="updates", base="main", force_push=False
+    )

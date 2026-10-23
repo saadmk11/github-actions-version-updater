@@ -7,6 +7,7 @@ import logging
 import sys
 from pathlib import Path
 
+import github_action_utils as gha
 import pytest
 
 from update_gha.log import (
@@ -70,15 +71,19 @@ def test_github_handler_prefixes(level: int, expected: str) -> None:
     assert stream.getvalue() == expected
 
 
-def test_github_handler_escapes_workflow_commands() -> None:
+@pytest.mark.parametrize("level", [logging.WARNING, logging.DEBUG])
+def test_github_handler_escapes_workflow_commands(level: int) -> None:
     stream = io.StringIO()
     handler = GitHubActionsHandler(stream=stream)
     handler.setFormatter(logging.Formatter("%(message)s"))
-    handler.emit(_record(logging.WARNING, "100%\r\nnext"))
-    assert stream.getvalue() == "::warning::100%25%0D%0Anext\n"
+    handler.emit(_record(level, "100%\r\nnext"))
+    prefix = "::warning::" if level == logging.WARNING else ""
+    assert stream.getvalue() == prefix + "100%25%0D%0Anext\n"
 
 
-def test_github_handler_does_not_raise_on_stream_error() -> None:
+def test_github_handler_does_not_raise_on_stream_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class Broken:
         def write(self, _data: str) -> None:
             raise OSError("no")
@@ -89,7 +94,11 @@ def test_github_handler_does_not_raise_on_stream_error() -> None:
     handler = GitHubActionsHandler(stream=io.StringIO())
     handler.setFormatter(logging.Formatter("%(message)s"))
     handler._stream = Broken()
-    handler.emit(_record(logging.INFO, "m"))
+    errors: list[logging.LogRecord] = []
+    monkeypatch.setattr(handler, "handleError", errors.append)
+    record = _record(logging.INFO, "m")
+    handler.emit(record)
+    assert errors == [record]
 
 
 def test_github_reporter_groups_and_summary(
@@ -157,3 +166,102 @@ def test_add_summary_is_skipped_without_step_summary(
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
     reporter.add_summary("line")
     assert summary.read_text(encoding="utf-8") == "line\n"
+
+
+@pytest.mark.parametrize("ending", ["", "\n", "\n\n"])
+def test_summary_preserves_raw_markdown_with_utils_v2(
+    ending: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    markdown = "### 100% / %25 / %0D / %0A / café\r\nnext" + ending
+    reporter = GitHubActionsReporter(logging.getLogger("summary-raw"))
+    reporter.add_summary(markdown)
+    expected = markdown if markdown.endswith("\n") else markdown + "\n"
+    assert summary.read_bytes() == expected.encode("utf-8")
+
+
+def test_workflow_commands_escape_once_and_close_group_on_error() -> None:
+    stream = io.StringIO()
+    logger = configure_logging(stream=stream)
+    handler = GitHubActionsHandler(stream=stream)
+    handler.emit(_record(logging.WARNING, "literal %0A\n::error::text"))
+    assert stream.getvalue() == "::warning::literal %250A%0A::error::text\n"
+    stream.seek(0)
+    stream.truncate()
+    reporter = GitHubActionsReporter(logger, stream=stream)
+    with pytest.raises(ValueError), reporter.group("100%\n::error::title"):
+        raise ValueError("stop")
+    assert stream.getvalue() == ("::group::100%25%0A::error::title\n::endgroup::\n")
+
+
+def test_workflow_logging_does_not_change_global_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    stdout = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(gha, "COMMANDS_USE_SUBPROCESS", True)
+
+    class ObservingStream(io.StringIO):
+        def write(self, text: str) -> int:
+            assert sys.stdout is stdout
+            assert gha.COMMANDS_USE_SUBPROCESS is True
+            return super().write(text)
+
+    stream = ObservingStream()
+    logger = configure_logging(stream=stream)
+    reporter = GitHubActionsReporter(logger, stream=stream)
+    with reporter.group("Updates"):
+        reporter.warning("100%\nnext")
+        reporter.info("Done")
+        print("Unrelated output")
+    assert stream.getvalue() == (
+        "::group::Updates\n::warning::100%25%0Anext\nDone\n::endgroup::\n"
+    )
+    assert stdout.getvalue() == "Unrelated output\n"
+
+
+def test_workflow_logging_writes_utf8_to_encoded_stream() -> None:
+    buffer = io.BytesIO()
+    with io.TextIOWrapper(buffer, encoding="ascii") as stream:
+        handler = GitHubActionsHandler(stream=stream)
+        handler.emit(_record(logging.WARNING, "café"))
+        assert buffer.getvalue() == "::warning::café\n".encode()
+
+
+@pytest.mark.parametrize("output", ["progress", "debug"])
+@pytest.mark.parametrize(
+    "message",
+    [
+        "::add-mask::hidden",
+        " \t::stop-commands::hidden",
+        "ordinary output\n::error::injected",
+        "ordinary output\r::error::injected",
+        "ordinary output ##[add-mask]hidden",
+        "ordinary output\n##[error]injected",
+    ],
+)
+def test_plain_workflow_output_cannot_inject_commands(
+    output: str, message: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    stream = io.StringIO()
+    logger = configure_logging(Verbosity.VERBOSE, stream=stream)
+    if output == "progress":
+        get_reporter(logger, stream=stream).info(message)
+    else:
+        logger.debug(message)
+    emitted = stream.getvalue()
+    assert emitted.endswith("\n")
+    assert "::" not in emitted
+    assert "##[" not in emitted
+
+
+def test_progress_preserves_multiline_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    stream = io.StringIO()
+    logger = configure_logging(stream=stream)
+    message = "Updated café\n100% complete\n"
+    get_reporter(logger, stream=stream).info(message)
+    assert stream.getvalue() == message + "\n"

@@ -37,9 +37,11 @@ from update_gha.cli.options import (
     VerboseOption,
 )
 from update_gha.config import configuration_from_cli, split_csv
+from update_gha.github import GitHubAPIError
 from update_gha.log import (
     Verbosity,
     configure_logging,
+    echo_report,
     get_reporter,
 )
 from update_gha.models import OutputFormat
@@ -48,7 +50,7 @@ from update_gha.scan import render_diff, run_update
 
 def _version_callback(value: bool) -> None:
     if value:
-        typer.echo(__version__)
+        echo_report(__version__)
         raise typer.Exit(0)
 
 
@@ -101,9 +103,8 @@ def main(
 ) -> None:
     """Bump outdated GitHub Action pins to the latest release or commit.
 
-    Scans .github/workflows by default. GitHub API calls are unauthenticated
-    unless --token is set. A token is required for --pull-request and for
-    private action repositories.
+    Scan .github/workflows by default. Private action repositories and
+    --pull-request require a GitHub token.
     """
     if verbose and quiet:
         raise typer.BadParameter("Use either --verbose or --quiet, not both.")
@@ -177,18 +178,18 @@ def main(
 
     try:
         report = run_update(config, reporter=reporter)
-    except OSError as exc:
+    except (GitHubAPIError, OSError) as exc:
         reporter.error(str(exc))
         raise typer.Exit(1) from exc
 
     if config.output_format is OutputFormat.JSON:
-        typer.echo(report.model_dump_json(indent=2))
+        echo_report(report.model_dump_json(indent=2), json_output=True)
     else:
-        typer.echo(report.text_summary())
+        echo_report(report.text_summary())
         if config.show_diff:
             for file_update in report.files:
                 if file_update.changed:
-                    typer.echo(render_diff(file_update), nl=False)
+                    echo_report(render_diff(file_update), nl=False)
 
     if config.check and report.has_updates:
         raise typer.Exit(1)
@@ -217,7 +218,7 @@ def main(
                 paths=tuple(item.path for item in report.files if item.changed),
                 context=pull_request_context,
             )
-        except (OSError, ValidationError, ValueError) as exc:
+        except (GitHubAPIError, OSError, ValidationError, ValueError) as exc:
             reporter.error(str(exc))
             raise typer.Exit(1) from exc
         raise typer.Exit(result)

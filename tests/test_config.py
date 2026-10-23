@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pydantic import SecretStr, ValidationError
 
 from update_gha.config import (
     Configuration,
@@ -45,16 +46,41 @@ def test_env_overrides_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.release_types == {ReleaseType.MINOR, ReleaseType.PATCH}
 
 
-def test_github_token_alias(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GITHUB_TOKEN", "ghs_abcdefghij")
+@pytest.mark.parametrize("alias", ["GITHUB_TOKEN", "GHA_UPDATE_TOKEN"])
+def test_token_alias(alias: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(alias, "ghs_abcdefghij")
     config = Configuration()
-    assert config.token == "ghs_abcdefghij"
+    assert isinstance(config.token, SecretStr)
+    assert config.token.get_secret_value() == "ghs_abcdefghij"
+
+
+def test_token_is_masked_in_representations_and_serialization() -> None:
+    secret = "ghs_sensitive_test_token"
+    config = Configuration.model_validate({"token": secret})
+    assert config.token is not None
+    assert secret not in repr(config)
+    assert secret not in str(config)
+    assert str(config.token) == "**********"
+    assert secret not in repr(config.model_dump())
+    assert secret not in config.model_dump_json()
+    assert config.model_dump(mode="json")["token"] == "**********"
+    assert config.token.get_secret_value() == secret
+
+
+def test_validation_diagnostics_hide_inputs_with_tokens() -> None:
+    secret = "ghs_sensitive_test_token"
+    with pytest.raises(ValidationError) as caught:
+        Configuration.model_validate({"token": [secret]})
+    assert secret not in str(caught.value)
+    assert "input_value" not in str(caught.value)
 
 
 def test_cli_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GHA_UPDATE_IGNORE_ACTIONS", "actions/checkout@v2")
     monkeypatch.setenv("GHA_UPDATE_UPDATE_VERSION_WITH", "release-tag")
+    monkeypatch.setenv("GHA_UPDATE_TOKEN", "environment-token")
     config = configuration_from_cli(
+        token="cli-token",
         ignore="actions/setup-python@v4",
         update_version_with=UpdateVersionWith.DEFAULT_BRANCH_COMMIT_SHA,
         release_types="major",
@@ -64,6 +90,8 @@ def test_cli_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.update_version_with is UpdateVersionWith.DEFAULT_BRANCH_COMMIT_SHA
     assert config.release_types == {ReleaseType.MAJOR}
     assert config.should_write() is False
+    assert config.token is not None
+    assert config.token.get_secret_value() == "cli-token"
 
 
 def test_omitted_cli_values_keep_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -159,7 +187,9 @@ def test_configuration_from_cli_flags(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    assert configuration_from_cli(token="t", repository="o/r").token == "t"
+    config = configuration_from_cli(token="t", repository="o/r")
+    assert config.token is not None
+    assert config.token.get_secret_value() == "t"
     cfg = configuration_from_cli(
         extra_locations=("one.yml",),
         paths=[tmp_path / "two.yml"],

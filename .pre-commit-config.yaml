@@ -18,16 +18,18 @@ repos:
     rev: v2.4.0
     hooks:
       - id: mypy
+        language_version: python3.12
+        args: []
         additional_dependencies:
-          - GitPython>=3.1.44
+          - GitPython>=3.2.1
+          - github-action-utils>=2.0.0,<3
+          - httpx2>=2.12.0,<3
           - packaging>=23.2
-          - pydantic>=2.7
-          - pydantic-settings>=2.7
+          - pydantic>=2.7,<3
+          - pydantic-settings>=2.7,<3
           - pytest>=8.0
           - pyyaml>=6.0.1
-          - requests>=2.32.4
-          - typer>=0.12.5
+          - typer>=0.26,<1
           - types-pyyaml
-          - types-requests
         pass_filenames: false
         always_run: true

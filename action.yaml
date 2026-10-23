@@ -72,27 +72,20 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Install uv
+    - name: Install isolated runtime manager
+      id: uv
       uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       with:
-        version: "0.11.32"
-        enable-cache: true
-
-    - name: Install update-gha from this action
-      shell: bash
-      env:
-        UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/update-gha
-        UV_PYTHON: "3.14"
-      run: |
-        uv sync --project "${{ github.action_path }}" --frozen --no-dev --no-editable --extra action
+        version: "0.13.4"
+        enable-cache: 'false'
+        ignore-nothing-to-cache: 'true'
 
     - name: Update GitHub Action versions
       id: update
       shell: bash
       env:
-        UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/update-gha
-        UV_PYTHON: "3.14"
         GITHUB_TOKEN: ${{ inputs.token }}
+        GHA_UPDATE_TOKEN: ${{ inputs.token }}
         GHA_UPDATE_IGNORE_ACTIONS: ${{ inputs.ignore }}
         GHA_UPDATE_UPDATE_VERSION_WITH: ${{ inputs.update_version_with }}
         GHA_UPDATE_RELEASE_TYPES: ${{ inputs.release_types }}
@@ -110,7 +103,16 @@ runs:
         GHA_UPDATE_DRY_RUN: "false"
         GHA_UPDATE_SHOW_DIFF: "false"
         GHA_UPDATE_OUTPUT_FORMAT: "text"
+        GHA_UPDATE_SKIP_PULL_REQUEST: ${{ inputs.skip_pull_request }}
+        UPDATE_GHA_UV: ${{ steps.uv.outputs.uv-path }}
       run: |
+        for variable in ${!UV_@} ${!PIP_@}; do
+          unset "$variable"
+        done
+        unset PYTHONPATH PYTHONHOME VIRTUAL_ENV CONDA_PREFIX
+        export UV_CACHE_DIR="${RUNNER_TEMP}/update-gha/uv-cache"
+        export UV_PYTHON_INSTALL_DIR="${RUNNER_TEMP}/update-gha/python"
+        export UV_TOOL_DIR="${RUNNER_TEMP}/update-gha/tools"
         args=(
           --ignore "${GHA_UPDATE_IGNORE_ACTIONS}"
           --update-version-with "${GHA_UPDATE_UPDATE_VERSION_WITH}"
@@ -125,11 +127,14 @@ runs:
           --pull-request-teams "${GHA_UPDATE_PULL_REQUEST_TEAM_REVIEWERS}"
           --pull-request-labels "${GHA_UPDATE_PULL_REQUEST_LABELS}"
         )
-        update_gha=(uv run --project "${{ github.action_path }}" --no-sync update-gha)
-        skip="${{ inputs.skip_pull_request }}"
-        case "${skip}" in
+        update_gha=(
+          "$UPDATE_GHA_UV" --no-config tool run --isolated --no-env-file
+          --managed-python --python 3.14 --default-index https://pypi.org/simple
+          --from 'update-gha[action]==1.0.2' update-gha
+        )
+        case "${GHA_UPDATE_SKIP_PULL_REQUEST}" in
           true|True|TRUE|1)
             exec "${update_gha[@]}" "${args[@]}" --no-pull-request --diff --fail-on-update
             ;;
         esac
-        "${update_gha[@]}" "${args[@]}" --pull-request
+        exec "${update_gha[@]}" "${args[@]}" --pull-request

@@ -231,3 +231,9 @@ def test_one_unrewritable_token_does_not_block_others() -> None:
     )
     assert "actions/setup-python@v4" in updated
     assert "actions/checkout@v4" not in updated
+
+
+@pytest.mark.parametrize("action", ["missing-version", "@v1"])
+def test_incomplete_action_reference_is_unchanged(action: str) -> None:
+    text = f"- uses: {action}\n"
+    assert apply_version_updates(text, {action: "v2"}) == text

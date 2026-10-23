@@ -1,4 +1,14 @@
-# Unreleased
+# Version: v1.0.2
+
+* Install `update-gha[action]==1.0.2` from PyPI in an isolated CPython 3.14 environment.
+* Replace Requests with HTTPX2 2.12 or newer, using pooled lookups, explicit timeouts, same-origin redirects, and sanitized connection errors.
+* Require GitPython 3.2.1 or newer for the `[action]` extra to include its security fixes.
+* Store `Configuration.token` as Pydantic `SecretStr` to mask it in configuration representations and JSON serialization. Python callers must use `.get_secret_value()` to read the token.
+* Give the action's `token` input precedence over tokens in the job environment.
+* Prevent logs, summaries, and diffs from injecting GitHub Actions commands.
+* Use `github-action-utils` 2.0.0 for runner detection and job summaries. Update Changelog CI to v2.0.2.
+* Run tests on Python 3.12–3.15 with uv-backed Tox, strict typing, and 100% statement and branch coverage.
+* Require CI and clean wheel and source installations, with and without `[action]`, before publishing releases through PyPI Trusted Publishing.
 
 # Version: v1.0.1
 

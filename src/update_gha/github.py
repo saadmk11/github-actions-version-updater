@@ -3,12 +3,11 @@
 import time
 from collections.abc import Callable, Mapping
 from typing import Protocol, assert_never
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urljoin
 
-import requests
+import httpx2
 from packaging.version import InvalidVersion, Version
 from pydantic import TypeAdapter, ValidationError
-from requests import RequestException
 
 from update_gha.log import Reporter
 from update_gha.models import (
@@ -30,6 +29,8 @@ GITHUB_HTML_URL = "https://github.com/"
 HTTP_TIMEOUT_SECONDS = 30
 PAGE_SIZE = 100
 MAX_RETRIES = 4
+MAX_REDIRECTS = 5
+REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 type SleepFn = Callable[[float], None]
 
@@ -51,18 +52,28 @@ class VersionLookup(Protocol):
         current_version: str,
         update_with: UpdateVersionWith,
         release_types: frozenset[ReleaseType],
-    ) -> ResolvedVersion | None: ...
+    ) -> ResolvedVersion | None:
+        """Resolve an eligible tag or SHA, returning None when no update applies."""
+        ...
 
 
 class HttpResponse(Protocol):
+    """HTTP response fields required by the GitHub client."""
+
     status_code: int
     text: str
 
-    def header(self, name: str) -> str | None: ...
+    def header(self, name: str) -> str | None:
+        """Return a case-insensitive response header, or None if absent."""
+        ...
 
 
 class HttpSession(Protocol):
-    def get(self, url: str, headers: dict[str, str] | None = None) -> HttpResponse: ...
+    """Injectable transport for deterministic requests and tests."""
+
+    def get(self, url: str, headers: dict[str, str] | None = None) -> HttpResponse:
+        """Fetch a URL with optional authentication headers."""
+        ...
 
 
 _RELEASE_LIST = TypeAdapter(list[GitHubReleasePayload])
@@ -76,8 +87,10 @@ class GitHubAPIError(RuntimeError):
 
 
 def request_headers(token: str | None) -> dict[str, str]:
+    """Return GitHub API headers, adding bearer authentication when provided."""
     headers = {
-        "Accept": "application/vnd.github.v3+json",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "update-gha",
     }
     if token:
@@ -92,23 +105,31 @@ class _ResponseAdapter:
         self._headers = {key.lower(): value for key, value in headers.items()}
 
     def header(self, name: str) -> str | None:
+        """Return a case-insensitive response header, or None if absent."""
         return self._headers.get(name.lower())
 
 
-class _RequestsSession:
-    """Adapt ``requests.Session`` to ``HttpSession``."""
+class _Httpx2Session:
+    """Adapt a pooled HTTPX2 client with explicit timeouts to ``HttpSession``."""
 
     def __init__(self) -> None:
-        self._inner = requests.Session()
+        try:
+            self._inner = httpx2.Client(
+                timeout=httpx2.Timeout(HTTP_TIMEOUT_SECONDS, connect=10),
+                follow_redirects=False,
+            )
+        except (httpx2.InvalidURL, ValueError) as exc:
+            raise GitHubAPIError(
+                f"Could not initialize GitHub client ({type(exc).__name__})."
+            ) from exc
 
     def get(self, url: str, headers: dict[str, str] | None = None) -> HttpResponse:
-        response = self._inner.get(url, headers=headers, timeout=HTTP_TIMEOUT_SECONDS)
-        raw_headers = {
-            str(key).lower(): str(value) for key, value in response.headers.items()
-        }
-        return _ResponseAdapter(response.status_code, response.text, raw_headers)
+        """Fetch a URL with optional authentication headers."""
+        response = self._inner.get(url, headers=headers)
+        return _ResponseAdapter(response.status_code, response.text, response.headers)
 
     def close(self) -> None:
+        """Close only the client-owned connection pool; safe to call repeatedly."""
         self._inner.close()
 
 
@@ -126,9 +147,9 @@ class GitHubClient:
         self._token = token
         self._reporter = reporter
         self._sleeper: SleepFn = sleeper if sleeper is not None else time.sleep
-        self._owned_session: _RequestsSession | None
+        self._owned_session: _Httpx2Session | None
         if session is None:
-            self._owned_session = _RequestsSession()
+            self._owned_session = _Httpx2Session()
             self._session: HttpSession = self._owned_session
         else:
             self._owned_session = None
@@ -139,6 +160,7 @@ class GitHubClient:
         self._release_sha_cache: dict[tuple[str, str], ReleaseInfo | None] = {}
 
     def close(self) -> None:
+        """Close only the client-owned connection pool; safe to call repeatedly."""
         if self._owned_session is not None:
             self._owned_session.close()
             self._owned_session = None
@@ -150,6 +172,7 @@ class GitHubClient:
         update_with: UpdateVersionWith,
         release_types: frozenset[ReleaseType],
     ) -> ResolvedVersion | None:
+        """Resolve an eligible tag or SHA, returning None when no update applies."""
         match update_with:
             case UpdateVersionWith.LATEST_RELEASE_TAG:
                 if not (
@@ -206,13 +229,21 @@ class GitHubClient:
                         commit=commit,
                     ),
                 )
+
         assert_never(update_with)
 
     def _request(self, url: str) -> HttpResponse:
-        try:
-            return self._session.get(url, headers=request_headers(self._token))
-        except RequestException as exc:
-            raise GitHubAPIError(f"Could not reach GitHub: {exc}") from exc
+        for _ in range(MAX_REDIRECTS + 1):
+            try:
+                response = self._session.get(url, headers=request_headers(self._token))
+            except (httpx2.HTTPError, httpx2.InvalidURL) as exc:
+                raise GitHubAPIError(
+                    f"Could not reach GitHub ({type(exc).__name__})."
+                ) from exc
+            if response.status_code not in REDIRECT_STATUSES:
+                return response
+            url = redirect_target(url, response.header("location"), self._api_url)
+        raise GitHubAPIError("GitHub returned too many redirects")
 
     def _get(self, url: str) -> HttpResponse:
         delay = 1.0
@@ -422,7 +453,7 @@ def _validate_response[T](adapter: TypeAdapter[T], raw: str, *, context: str) ->
 
 
 def _same_commit(candidate: str, current: str) -> bool:
-    """True if both are hex SHAs and one is a prefix of the other (min 7 chars)."""
+    """Return True for hexadecimal SHAs sharing a prefix of at least 7 characters."""
     if not candidate or not current:
         return False
     shorter, longer = sorted((candidate.lower(), current.lower()), key=len)
@@ -450,13 +481,28 @@ def _should_retry(response: HttpResponse) -> bool:
     return "rate limit" in response.text.lower()
 
 
+def redirect_target(url: str, location: str | None, api_url: str) -> str:
+    """Resolve a redirect within the API origin before forwarding credentials."""
+    try:
+        destination = urljoin(url, location or "")
+    except ValueError as exc:
+        raise GitHubAPIError("GitHub returned an invalid redirect URL") from exc
+    if not location or not _same_origin(destination, api_url):
+        raise GitHubAPIError("GitHub returned an unexpected redirect origin")
+    return destination
+
+
 def _same_origin(url: str, expected: str) -> bool:
-    actual_parts = urlsplit(url)
-    expected_parts = urlsplit(expected)
-    return (
-        actual_parts.scheme == expected_parts.scheme
-        and actual_parts.netloc == expected_parts.netloc
-    )
+    try:
+        actual = httpx2.URL(url)
+        trusted = httpx2.URL(expected)
+        return not actual.userinfo and (actual.scheme, actual.host, actual.port) == (
+            trusted.scheme,
+            trusted.host,
+            trusted.port,
+        )
+    except httpx2.InvalidURL:
+        return False
 
 
 def _retry_after_seconds(response: HttpResponse) -> float | None:
