@@ -9,8 +9,6 @@
 * Add security guidance, function docstrings, and regression coverage for reference selection and credential handling.
 * Update locked cachetools, coverage, Ruff, and virtualenv dependencies.
 
-CLI flags, action inputs, and action outputs remain unchanged.
-
 # Version: v1.0.2
 
 * Install `update-gha[action]==1.0.2` from PyPI in an isolated CPython 3.14 environment.
