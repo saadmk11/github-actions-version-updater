@@ -20,7 +20,7 @@ from update_gha.github import (
     HttpSession,
     VersionLookup,
 )
-from update_gha.log import Reporter, get_reporter, mask_secret
+from update_gha.log import Reporter, get_reporter
 from update_gha.models import (
     ActionUpdate,
     FileUpdate,
@@ -50,7 +50,6 @@ def run_update(
     workspace: Path | None = None,
 ) -> UpdateReport:
     """Discover workflows, apply version updates, and return a report."""
-    mask_secret(config.token)
     active_reporter = reporter if reporter is not None else get_reporter()
     owned_client: GitHubClient | None = None
     if client is not None:

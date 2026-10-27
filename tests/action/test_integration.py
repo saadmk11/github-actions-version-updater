@@ -14,8 +14,12 @@ from update_gha.cli import app
 
 
 @pytest.mark.parametrize("skip", [False, True])
+@pytest.mark.parametrize("output_format", ["text", "json"])
 def test_action_updates_workflows_with_real_git(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, skip: bool
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    skip: bool,
+    output_format: str,
 ) -> None:
     with ExitStack() as repositories:
         remote = repositories.enter_context(
@@ -44,8 +48,11 @@ def test_action_updates_workflows_with_real_git(
         )
         output = tmp_path / "output"
         requests: list[httpx2.Request] = []
+        masks: list[str] = []
+        monkeypatch.setattr(gha, "add_mask", masks.append)
 
         def respond(request: httpx2.Request) -> httpx2.Response:
+            assert masks == ["test-token"]
             requests.append(request)
             assert request.headers["Authorization"] == "Bearer test-token"
             match request.method, request.url.path:
@@ -97,13 +104,12 @@ def test_action_updates_workflows_with_real_git(
             monkeypatch.chdir(workspace)
             result = CliRunner().invoke(
                 app,
-                [
-                    "--no-pull-request",
-                    "--diff",
-                    "--fail-on-update",
-                ]
-                if skip
-                else ["--pull-request"],
+                (
+                    ["--no-pull-request", "--diff", "--fail-on-update"]
+                    if skip
+                    else ["--pull-request"]
+                )
+                + ["--format", output_format],
                 env={
                     "GITHUB_ACTIONS": "true",
                     "GITHUB_REPOSITORY": "owner/repo",
@@ -119,6 +125,10 @@ def test_action_updates_workflows_with_real_git(
                 },
             )
         assert result.exit_code == (1 if skip else 0), result.output
+        assert masks == ["test-token"]
+        assert "test-token" not in result.output
+        if output_format == "json":
+            assert json.loads(result.stdout)["wrote"] is True
         assert (workspace / "hook-ran").exists() == (not skip)
         assert "owner/action@v2" in workflow.read_text()
         assert unrelated.read_text() == "Keep this file.\n"

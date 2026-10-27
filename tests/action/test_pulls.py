@@ -45,14 +45,11 @@ def test_pull_request_proxy_errors_do_not_expose_credentials(
 
 
 @pytest.mark.parametrize("operation", ["pull_request", "reviewers", "labels"])
-def test_custom_action_api_failures_cannot_log_the_token(
+def test_api_failures_cannot_log_the_token(
     monkeypatch: pytest.MonkeyPatch, operation: str
 ) -> None:
     secret = "fixture-sensitive-token-" + "x" * 200
     reporter = RecordingReporter()
-    masks: list[str] = []
-    monkeypatch.setenv("GITHUB_ACTIONS", "true")
-    monkeypatch.setattr("github_action_utils.add_mask", masks.append)
     monkeypatch.setattr(pulls, "request", _stub_request(502, f"upstream: {secret}"))
     config = make_config(token=secret)
     match operation:
@@ -70,7 +67,6 @@ def test_custom_action_api_failures_cannot_log_the_token(
     assert reporter.errors
     assert "HTTP 502: request failed" in reporter.errors[0]
     assert secret[:100] not in reporter.errors[0]
-    assert secret in masks
 
 
 def _stub_request(status: int, payload: str = "{}") -> RequestFn:

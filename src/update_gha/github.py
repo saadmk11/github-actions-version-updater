@@ -9,7 +9,7 @@ import httpx2
 from packaging.version import InvalidVersion, Version
 from pydantic import SecretStr, TypeAdapter, ValidationError
 
-from update_gha.log import Reporter, mask_secret
+from update_gha.log import Reporter
 from update_gha.models import (
     BranchInfo,
     CommitInfo,
@@ -151,7 +151,6 @@ class GitHubClient:
         that is released by close().
         """
         self._token = token
-        mask_secret(token)
         self._reporter = reporter
         self._sleeper: SleepFn = sleeper if sleeper is not None else time.sleep
         self._owned_session: _Httpx2Session | None

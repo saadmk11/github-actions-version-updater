@@ -778,13 +778,8 @@ def test_release_tag_comment_helper() -> None:
     )
 
 
-def test_custom_action_scanner_masks_token_and_omits_api_body(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_scanner_omits_api_response_body(tmp_path: Path) -> None:
     secret = "fixture-sensitive-token"
-    masks: list[str] = []
-    monkeypatch.setenv("GITHUB_ACTIONS", "true")
-    monkeypatch.setattr("github_action_utils.add_mask", masks.append)
     write_workflow(tmp_path, "ci.yml", CHECKOUT_V3)
     reporter = RecordingReporter()
     url = "https://api.github.com/repos/actions/checkout/releases?per_page=100"
@@ -799,4 +794,3 @@ def test_custom_action_scanner_masks_token_and_omits_api_body(
     assert report.has_updates is False
     assert "HTTP 401: authentication failed" in reporter.errors[0]
     assert "response-sensitive-value" not in "".join(reporter.errors)
-    assert secret in masks

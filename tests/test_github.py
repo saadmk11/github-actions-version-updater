@@ -1472,13 +1472,8 @@ def test_error_summary_uses_only_status(status: int, reason: str) -> None:
 
 
 @pytest.mark.parametrize("raw_body", [True, False])
-def test_custom_action_client_masks_token_and_omits_response_body(
-    raw_body: bool, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_client_keeps_token_wrapped_and_omits_response_body(raw_body: bool) -> None:
     secret = SecretStr("fixture-sensitive-token")
-    masks: list[str] = []
-    monkeypatch.setenv("GITHUB_ACTIONS", "true")
-    monkeypatch.setattr("github_action_utils.add_mask", masks.append)
     body = "response-sensitive-value"
     client = GitHubClient(
         secret,
@@ -1489,7 +1484,6 @@ def test_custom_action_client_masks_token_and_omits_response_body(
     )
     assert isinstance(client._token, SecretStr)
     assert secret.get_secret_value() not in repr(client._token)
-    assert masks == [secret.get_secret_value()]
     with pytest.raises(GitHubAPIError) as error:
         client.resolve_new_version(
             "actions/checkout",

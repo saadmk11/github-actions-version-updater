@@ -18,7 +18,7 @@ from update_gha.github import (
     redirect_target,
     request_headers,
 )
-from update_gha.log import Reporter, mask_secret
+from update_gha.log import Reporter
 
 API_ROOT = "https://api.github.com"
 
@@ -69,7 +69,6 @@ def api_request(
     token = config.token
     if not token:
         raise ValueError("A GitHub token is required to call the pull-request API.")
-    mask_secret(token)
     data = None if payload is None else json.dumps(payload).encode("utf-8")
     headers = request_headers(token)
     headers["Content-Type"] = "application/json"

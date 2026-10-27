@@ -18,7 +18,7 @@ from update_gha.action.git import (
 )
 from update_gha.action.pulls import add_labels, add_reviewers, create_pull_request
 from update_gha.config import Configuration
-from update_gha.log import Reporter, mask_secret
+from update_gha.log import Reporter
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,6 @@ class PullRequestContext:
 
 def prepare(config: Configuration, reporter: Reporter) -> PullRequestContext | None:
     """Validate pull-request settings and git state without changing files."""
-    mask_secret(config.token)
     if not config.token or not config.repository:
         reporter.error("A GitHub token and repository are required for --pull-request.")
         return None
@@ -70,7 +69,6 @@ def run(
     context: PullRequestContext | None = None,
 ) -> int:
     """Commit, push, and open the pull request. Returns a process exit code."""
-    mask_secret(config.token)
     active = context if context is not None else prepare(config, reporter)
     if active is None:
         return 1
