@@ -6,9 +6,11 @@ import io
 import logging
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import github_action_utils as gha
 import pytest
+from pydantic import SecretStr
 
 from update_gha.log import (
     CliReporter,
@@ -17,6 +19,7 @@ from update_gha.log import (
     Verbosity,
     configure_logging,
     get_reporter,
+    mask_secret,
 )
 
 
@@ -55,19 +58,23 @@ def test_cli_summary_is_emitted_at_debug(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 @pytest.mark.parametrize(
-    ("level", "expected"),
+    ("level", "command", "expected"),
     [
-        (logging.ERROR, "::error::boom\n"),
-        (logging.WARNING, "::warning::boom\n"),
-        (logging.INFO, "::notice::boom\n"),
-        (logging.DEBUG, "boom\n"),
+        (logging.ERROR, "error", "::error ::boom\n"),
+        (logging.WARNING, "warning", "::warning ::boom\n"),
+        (logging.INFO, "notice", "::notice ::boom\n"),
+        (logging.DEBUG, "echo", "boom\n"),
     ],
 )
-def test_github_handler_prefixes(level: int, expected: str) -> None:
+def test_github_handler_uses_utils_commands(
+    level: int, command: str, expected: str
+) -> None:
     stream = io.StringIO()
     handler = GitHubActionsHandler(stream=stream)
     handler.setFormatter(logging.Formatter("%(message)s"))
-    handler.emit(_record(level, "boom"))
+    with patch.object(gha, command, wraps=getattr(gha, command)) as emit:
+        handler.emit(_record(level, "boom"))
+    emit.assert_called_once_with("boom")
     assert stream.getvalue() == expected
 
 
@@ -77,12 +84,17 @@ def test_github_handler_escapes_workflow_commands(level: int) -> None:
     handler = GitHubActionsHandler(stream=stream)
     handler.setFormatter(logging.Formatter("%(message)s"))
     handler.emit(_record(level, "100%\r\nnext"))
-    prefix = "::warning::" if level == logging.WARNING else ""
-    assert stream.getvalue() == prefix + "100%25%0D%0Anext\n"
+    expected = (
+        "::warning ::100%25%0D%0Anext\n"
+        if level == logging.WARNING
+        else "100%\r\nnext\n"
+    )
+    assert stream.getvalue() == expected
 
 
+@pytest.mark.parametrize("use_subprocess", [False, True])
 def test_github_handler_does_not_raise_on_stream_error(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, use_subprocess: bool
 ) -> None:
     class Broken:
         def write(self, _data: str) -> None:
@@ -91,6 +103,8 @@ def test_github_handler_does_not_raise_on_stream_error(
         def flush(self) -> None:
             return None
 
+    stdout = sys.stdout
+    monkeypatch.setattr(gha, "COMMANDS_USE_SUBPROCESS", use_subprocess)
     handler = GitHubActionsHandler(stream=io.StringIO())
     handler.setFormatter(logging.Formatter("%(message)s"))
     handler._stream = Broken()
@@ -99,6 +113,8 @@ def test_github_handler_does_not_raise_on_stream_error(
     record = _record(logging.INFO, "m")
     handler.emit(record)
     assert errors == [record]
+    assert sys.stdout is stdout
+    assert gha.COMMANDS_USE_SUBPROCESS is use_subprocess
 
 
 def test_github_reporter_groups_and_summary(
@@ -110,10 +126,20 @@ def test_github_reporter_groups_and_summary(
     logger = logging.getLogger("test-gha-reporter")
     logger.setLevel(logging.INFO)
     reporter = GitHubActionsReporter(logger, stream=stream)
-    with reporter.group("Work"):
-        reporter.info("inside")
-    reporter.add_summary("### Hello")
-    assert stream.getvalue() == "::group::Work\ninside\n::endgroup::\n"
+    with (
+        patch.object(gha, "start_group", wraps=gha.start_group) as start,
+        patch.object(gha, "end_group", wraps=gha.end_group) as end,
+        patch.object(gha, "echo", wraps=gha.echo) as echo,
+        patch.object(gha, "append_job_summary", wraps=gha.append_job_summary) as append,
+    ):
+        with reporter.group("Work"):
+            reporter.info("inside")
+        reporter.add_summary("### Hello")
+    start.assert_called_once_with("Work")
+    end.assert_called_once_with()
+    echo.assert_called_once_with("inside")
+    append.assert_called_once_with("### Hello")
+    assert stream.getvalue() == "::group ::Work\ninside\n::endgroup::\n"
     assert summary.read_text(encoding="utf-8") == "### Hello\n"
 
 
@@ -148,7 +174,7 @@ def test_configure_logging_on_github_actions(monkeypatch: pytest.MonkeyPatch) ->
     assert isinstance(reporter, GitHubActionsReporter)
     assert isinstance(logger.handlers[0], GitHubActionsHandler)
     reporter.warning("careful")
-    assert stream.getvalue() == "::warning::careful\n"
+    assert stream.getvalue() == "::warning ::careful\n"
     assert GitHubActionsHandler()._stream is sys.stdout
     assert GitHubActionsReporter(logger)._stream is sys.stdout
 
@@ -186,51 +212,59 @@ def test_workflow_commands_escape_once_and_close_group_on_error() -> None:
     logger = configure_logging(stream=stream)
     handler = GitHubActionsHandler(stream=stream)
     handler.emit(_record(logging.WARNING, "literal %0A\n::error::text"))
-    assert stream.getvalue() == "::warning::literal %250A%0A::error::text\n"
+    assert stream.getvalue() == "::warning ::literal %250A%0A::error::text\n"
     stream.seek(0)
     stream.truncate()
     reporter = GitHubActionsReporter(logger, stream=stream)
     with pytest.raises(ValueError), reporter.group("100%\n::error::title"):
         raise ValueError("stop")
-    assert stream.getvalue() == ("::group::100%25%0A::error::title\n::endgroup::\n")
+    assert stream.getvalue() == ("::group ::100%25%0A::error::title\n::endgroup::\n")
 
 
-def test_workflow_logging_does_not_change_global_output(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("use_subprocess", [False, True])
+def test_workflow_logging_restores_global_output(
+    monkeypatch: pytest.MonkeyPatch, use_subprocess: bool
 ) -> None:
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     stdout = io.StringIO()
     monkeypatch.setattr(sys, "stdout", stdout)
-    monkeypatch.setattr(gha, "COMMANDS_USE_SUBPROCESS", True)
+    monkeypatch.setattr(gha, "COMMANDS_USE_SUBPROCESS", use_subprocess)
 
     class ObservingStream(io.StringIO):
         def write(self, text: str) -> int:
-            assert sys.stdout is stdout
-            assert gha.COMMANDS_USE_SUBPROCESS is True
+            assert sys.stdout is self
+            assert gha.COMMANDS_USE_SUBPROCESS is False
             return super().write(text)
 
     stream = ObservingStream()
     logger = configure_logging(stream=stream)
     reporter = GitHubActionsReporter(logger, stream=stream)
-    with reporter.group("Updates"):
+    with patch("subprocess.run") as command, reporter.group("Updates"):
+        assert sys.stdout is stdout
         reporter.warning("100%\nnext")
+        assert sys.stdout is stdout
         reporter.info("Done")
+        assert sys.stdout is stdout
         print("Unrelated output")
-    assert stream.getvalue() == (
-        "::group::Updates\n::warning::100%25%0Anext\nDone\n::endgroup::\n"
-    )
+    expected = "::group ::Updates\n::warning ::100%25%0Anext\nDone\n::endgroup::\n"
+    command.assert_not_called()
+    assert stream.getvalue() == expected
+    assert sys.stdout is stdout
+    assert gha.COMMANDS_USE_SUBPROCESS is use_subprocess
     assert stdout.getvalue() == "Unrelated output\n"
 
 
-def test_workflow_logging_writes_utf8_to_encoded_stream() -> None:
+def test_workflow_logging_writes_utf8_to_encoded_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
     buffer = io.BytesIO()
     with io.TextIOWrapper(buffer, encoding="ascii") as stream:
         handler = GitHubActionsHandler(stream=stream)
         handler.emit(_record(logging.WARNING, "café"))
-        assert buffer.getvalue() == "::warning::café\n".encode()
+        assert buffer.getvalue() == "::warning ::café\n".encode()
 
 
-@pytest.mark.parametrize("output", ["progress", "debug"])
 @pytest.mark.parametrize(
     "message",
     [
@@ -243,19 +277,23 @@ def test_workflow_logging_writes_utf8_to_encoded_stream() -> None:
     ],
 )
 def test_plain_workflow_output_cannot_inject_commands(
-    output: str, message: str, monkeypatch: pytest.MonkeyPatch
+    message: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     stream = io.StringIO()
     logger = configure_logging(Verbosity.VERBOSE, stream=stream)
-    if output == "progress":
-        get_reporter(logger, stream=stream).info(message)
-    else:
-        logger.debug(message)
+    get_reporter(logger, stream=stream).info(message)
     emitted = stream.getvalue()
     assert emitted.endswith("\n")
     assert "::" not in emitted
     assert "##[" not in emitted
+
+
+def test_verbose_output_cannot_inject_commands() -> None:
+    stream = io.StringIO()
+    handler = GitHubActionsHandler(stream=stream)
+    handler.emit(_record(logging.DEBUG, "100%\r\n::error::text\n##[error]text"))
+    assert stream.getvalue() == ("100%\r\n%3A%3Aerror%3A%3Atext\n%23%23[error]text\n")
 
 
 def test_progress_preserves_multiline_text(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -265,3 +303,26 @@ def test_progress_preserves_multiline_text(monkeypatch: pytest.MonkeyPatch) -> N
     message = "Updated café\n100% complete\n"
     get_reporter(logger, stream=stream).info(message)
     assert stream.getvalue() == message + "\n"
+
+
+@pytest.mark.parametrize("github_actions", [False, True])
+@pytest.mark.parametrize("value", [None, "", "first%\r\n::error::injected"])
+def test_runner_masks_use_utils_and_keep_stdout_clean(
+    github_actions: bool,
+    value: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    if github_actions:
+        monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    secret = SecretStr(value) if value is not None else None
+    with patch.object(gha, "add_mask", wraps=gha.add_mask) as add_mask:
+        mask_secret(secret)
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    if github_actions and value:
+        add_mask.assert_called_once_with(value)
+        assert captured.err == "::add-mask ::first%25%0D%0A::error::injected\n"
+    else:
+        add_mask.assert_not_called()
+        assert captured.err == ""

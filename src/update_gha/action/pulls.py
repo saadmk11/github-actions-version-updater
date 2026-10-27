@@ -18,7 +18,7 @@ from update_gha.github import (
     redirect_target,
     request_headers,
 )
-from update_gha.log import Reporter
+from update_gha.log import Reporter, mask_secret
 
 API_ROOT = "https://api.github.com"
 
@@ -49,10 +49,10 @@ def request(
                 timeout=httpx2.Timeout(timeout, connect=min(timeout, 10)),
                 follow_redirects=False,
             )
-        except (httpx2.HTTPError, httpx2.InvalidURL) as exc:
+        except (httpx2.HTTPError, httpx2.InvalidURL, ValueError) as exc:
             raise GitHubAPIError(
                 f"Could not reach GitHub ({type(exc).__name__})."
-            ) from exc
+            ) from None
         if response.status_code not in REDIRECT_STATUSES:
             return response.status_code, response.text
         url = redirect_target(url, response.headers.get("location"), api_url)
@@ -69,8 +69,9 @@ def api_request(
     token = config.token
     if not token:
         raise ValueError("A GitHub token is required to call the pull-request API.")
+    mask_secret(token)
     data = None if payload is None else json.dumps(payload).encode("utf-8")
-    headers = request_headers(token.get_secret_value())
+    headers = request_headers(token)
     headers["Content-Type"] = "application/json"
     return request(method, url, headers, data)
 
@@ -107,7 +108,7 @@ def create_pull_request(
         case _:
             reporter.error(
                 f"Could not create a pull request on {config.repository}: "
-                f"{error_summary(status, raw)}"
+                f"{error_summary(status)}"
             )
             raise SystemExit(1)
 
@@ -133,14 +134,14 @@ def add_reviewers(
         f"{API_ROOT}/repos/{config.repository}/pulls/"
         f"{pull_request_number}/requested_reviewers"
     )
-    status, raw = api_request("POST", url, config, payload)
+    status, _ = api_request("POST", url, config, payload)
     if status == 201:
         names = ", ".join([*users, *teams])
         reporter.info(f"Requested review from {names}")
         return
     reporter.error(
         f"Could not request reviews on pull request #{pull_request_number} "
-        f"on {config.repository}: {error_summary(status, raw)}"
+        f"on {config.repository}: {error_summary(status)}"
     )
 
 
@@ -156,7 +157,7 @@ def add_labels(
         reporter.info("No labels to add.")
         return
     url = f"{API_ROOT}/repos/{config.repository}/issues/{pull_request_number}/labels"
-    status, raw = api_request("POST", url, config, {"labels": list(labels)})
+    status, _ = api_request("POST", url, config, {"labels": list(labels)})
     if status == 200:
         reporter.info(
             f"Added {list(labels)!r} labels to pull request #{pull_request_number}"
@@ -164,5 +165,5 @@ def add_labels(
         return
     reporter.error(
         f"Could not add labels to pull request #{pull_request_number} "
-        f"on {config.repository}: {error_summary(status, raw)}"
+        f"on {config.repository}: {error_summary(status)}"
     )

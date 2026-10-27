@@ -118,7 +118,7 @@ def check(directory: Path) -> None:
         if not key.startswith(
             ("GITHUB_", "GHA_UPDATE_", "INPUT_", "PYTHON", "UV_", "PIP_")
         )
-        and key not in {"VIRTUAL_ENV", "CONDA_PREFIX"}
+        and key not in {"VIRTUAL_ENV", "CONDA_PREFIX", "GH_TOKEN"}
     }
     # Carry only the cache location into installation commands, never user indexes.
     install_env = clean_env | {

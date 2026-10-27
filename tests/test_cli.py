@@ -8,14 +8,18 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import github_action_utils as gha
 import pytest
+from pydantic import SecretStr
+from rich.text import Text
 from typer.testing import CliRunner
 
-from tests.conftest import pull_request_context
+from tests.conftest import FakeResponse, FakeSession, pull_request_context
+from update_gha import __version__
 from update_gha.action import has_action_extra
 from update_gha.cli.main import app
 from update_gha.config import Configuration
-from update_gha.github import GitHubAPIError
+from update_gha.github import GitHubAPIError, GitHubClient, HttpSession
 from update_gha.log import Reporter
 from update_gha.models import (
     ActionUpdate,
@@ -35,6 +39,111 @@ requires_action = pytest.mark.skipif(
 
 runner = CliRunner()
 _RUN_UPDATE = "update_gha.cli.main.run_update"
+
+
+@pytest.mark.parametrize(
+    "current_ref", ["v1.0.0", "v2.0.0", "a" * 40, "b" * 40, "maintenance"]
+)
+@pytest.mark.parametrize(
+    ("mode", "expected_pin"),
+    [
+        (UpdateVersionWith.LATEST_RELEASE_TAG, "v2.0.0"),
+        (UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA, "b" * 40 + "  # v2.0.0"),
+        (UpdateVersionWith.DEFAULT_BRANCH_COMMIT_SHA, "c" * 40),
+    ],
+)
+def test_cli_converts_reference_formats_using_real_lookup(
+    current_ref: str,
+    mode: UpdateVersionWith,
+    expected_pin: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = "https://api.github.com/repos/actions/checkout"
+    responses = FakeSession(
+        {
+            f"{api}/releases?per_page=100": FakeResponse(
+                200,
+                [
+                    {
+                        "tag_name": "v2.0.0",
+                        "html_url": "https://example.com/v2",
+                        "published_at": "2026-01-01T00:00:00Z",
+                    }
+                ],
+            ),
+            f"{api}/commits?sha=v2.0.0": FakeResponse(
+                200,
+                [
+                    {
+                        "sha": "b" * 40,
+                        "html_url": "https://example.com/commit",
+                        "commit": {"author": {"date": "2026-01-01T00:00:00Z"}},
+                    }
+                ],
+            ),
+            api: FakeResponse(200, {"default_branch": "main"}),
+            f"{api}/commits?sha=main": FakeResponse(
+                200,
+                [
+                    {
+                        "sha": "c" * 40,
+                        "html_url": "https://example.com/head",
+                        "commit": {"author": {"date": "2026-01-02T00:00:00Z"}},
+                    }
+                ],
+            ),
+        }
+    )
+
+    def create_client(
+        token: SecretStr | None, reporter: Reporter, session: HttpSession | None = None
+    ) -> GitHubClient:
+        return GitHubClient(token, reporter, session=responses)
+
+    monkeypatch.setattr("update_gha.scan.GitHubClient", create_client)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    workflow = tmp_path / ".github" / "workflows" / "ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(f"- uses: actions/checkout@{current_ref}\n")
+    result = runner.invoke(
+        app, ["--no-pull-request", "--update-version-with", mode.value]
+    )
+    assert result.exit_code == 0, result.output
+    assert workflow.read_text() == f"- uses: actions/checkout@{expected_pin}\n"
+    assert "::warning" not in result.output
+
+
+@pytest.mark.parametrize("option", ["--update-version-with", "--format"])
+@pytest.mark.parametrize("token_source", ["environment", "argument"])
+def test_invalid_enum_inputs_cannot_echo_credentials(
+    option: str, token_source: str
+) -> None:
+    secret = "fixture-sensitive-token"
+    args = [option, secret]
+    env = {"GITHUB_ACTIONS": "true"}
+    if token_source == "environment":
+        env["GHA_UPDATE_TOKEN"] = secret
+    else:
+        args = ["--token", secret, *args]
+    result = runner.invoke(app, args, env=env)
+    assert result.exit_code == 2
+    assert "Choose" in result.output
+    assert secret not in result.output
+
+
+def test_json_output_stays_parseable_with_subprocess_logging_enabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setattr(gha, "COMMANDS_USE_SUBPROCESS", True)
+    result = runner.invoke(app, ["--dry-run", "--format", "json"])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {"files": [], "wrote": False}
+    assert "No workflow files found" in result.stderr
+    assert gha.COMMANDS_USE_SUBPROCESS is True
 
 
 def _report(
@@ -88,7 +197,7 @@ def _stub_run_update(
 def test_help() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    output = " ".join(result.stdout.replace("│", " ").split())
+    output = " ".join(Text.from_ansi(result.stdout).plain.replace("│", " ").split())
     assert "--pull-request" in output
     assert "--check" in output
     assert "Required for --pull-request and for private action repos" in output
@@ -103,7 +212,7 @@ def test_help() -> None:
 def test_version() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert result.stdout.strip()
+    assert result.stdout.strip() == __version__
 
 
 def test_check_exits_one_when_updates_exist(
@@ -177,22 +286,62 @@ def test_json_format(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_run_update(monkeypatch, tmp_path, changed=True)
     result = runner.invoke(app, ["--format", "json", "--dry-run"])
     assert result.exit_code == 0
-    assert '"old_version": "v3"' in result.stdout
+    assert json.loads(result.stdout)["files"][0]["actions"][0]["old_version"] == "v3"
 
 
-def test_dry_run_does_not_write(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("option", "exit_code", "writes"),
+    [
+        (None, 0, True),
+        ("--check", 1, False),
+        ("--dry-run", 0, False),
+        ("--fail-on-update", 1, True),
+    ],
+)
+def test_cli_write_modes_update_or_preserve_real_workflow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    option: str | None,
+    exit_code: int,
+    writes: bool,
 ) -> None:
-    wrote: list[bool] = []
+    url = "https://api.github.com/repos/actions/checkout/releases?per_page=100"
+    responses = FakeSession(
+        {
+            url: FakeResponse(
+                200,
+                [
+                    {
+                        "tag_name": "v2.0.0",
+                        "html_url": "https://example.com/v2",
+                        "published_at": "2026-01-01T00:00:00Z",
+                    }
+                ],
+            )
+        }
+    )
 
-    def fake_run_update(config: Configuration, *, reporter: Reporter) -> UpdateReport:
-        wrote.append(config.should_write())
-        return _report(tmp_path, changed=True)
+    def create_client(
+        token: SecretStr | None, reporter: Reporter, session: HttpSession | None = None
+    ) -> GitHubClient:
+        return GitHubClient(token, reporter, session=responses)
 
-    monkeypatch.setattr(_RUN_UPDATE, fake_run_update)
-    result = runner.invoke(app, ["--dry-run"])
-    assert result.exit_code == 0
-    assert wrote == [False]
+    monkeypatch.setattr("update_gha.scan.GitHubClient", create_client)
+    monkeypatch.chdir(tmp_path)
+    workflow = tmp_path / ".github/workflows/ci.yml"
+    workflow.parent.mkdir(parents=True)
+    original = b"- uses: actions/checkout@v1.0.0\r\n"
+    workflow.write_bytes(original)
+    options = ["--format", "json"]
+    if option is not None:
+        options.append(option)
+    result = runner.invoke(app, options)
+    assert result.exit_code == exit_code, result.output
+    expected = original.replace(b"@v1.0.0", b"@v2.0.0") if writes else original
+    assert workflow.read_bytes() == expected
+    report = json.loads(result.stdout)
+    assert report["wrote"] is writes
+    assert report["files"][0]["actions"][0]["new_version"] == "v2.0.0"
 
 
 def test_pull_request_requires_extra(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -598,3 +747,84 @@ def test_invalid_proxy_has_a_safe_startup_error(
     assert "private-password" not in result.stderr
     assert "ghs_private_fixture_token" not in result.stderr
     assert "Traceback" not in result.stderr
+
+
+def test_invalid_settings_cannot_echo_token_in_field_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret = "fixture-sensitive-token"
+    (tmp_path / "pyproject.toml").write_text(
+        f'[tool.update-gha]\n"{secret}" = "unexpected"\n'
+    )
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["--token", secret, "--dry-run"])
+    assert result.exit_code == 2
+    assert secret not in result.output
+    assert "unknown settings" in result.stderr
+
+
+@pytest.mark.parametrize("source", ["argument", "environment"])
+def test_invalid_collection_settings_do_not_echo_values(
+    source: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret = "fixture-sensitive-token"
+    value = json.dumps([secret, 42])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GHA_UPDATE_TOKEN", secret)
+    args = ["--dry-run"]
+    if source == "argument":
+        args += ["--extra-workflow-locations", value]
+    else:
+        monkeypatch.setenv("GHA_UPDATE_IGNORE_ACTIONS", value)
+    result = runner.invoke(app, args)
+    assert result.exit_code == 2
+    assert "Invalid configuration" in result.stderr
+    assert secret not in result.output
+
+
+@pytest.mark.parametrize("option", ["--ignore", "--commit-message"])
+def test_token_like_examples_are_not_rejected_as_credentials(
+    option: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GHA_UPDATE_TOKEN", "fixture-sensitive-token")
+    monkeypatch.setattr(_RUN_UPDATE, lambda *_args, **_kwargs: UpdateReport(files=()))
+    result = runner.invoke(app, [option, "ghp_" + "A" * 40, "--dry-run"])
+    assert result.exit_code == 0
+
+
+@pytest.mark.parametrize("github_actions", [False, True])
+@pytest.mark.parametrize("token_source", ["argument", "environment"])
+@pytest.mark.parametrize("output", ["text", "json"])
+def test_cli_keeps_token_wrapped_and_masks_before_scanning(
+    github_actions: bool,
+    token_source: str,
+    output: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = "fixture-sensitive-token"
+    masks: list[str] = []
+    monkeypatch.setattr(gha, "add_mask", masks.append)
+    monkeypatch.chdir(tmp_path)
+    if github_actions:
+        monkeypatch.setenv("GITHUB_ACTIONS", "true")
+
+    def update(config: Configuration, *, reporter: Reporter) -> UpdateReport:
+        assert isinstance(config.token, SecretStr)
+        assert config.token.get_secret_value() == secret
+        assert secret not in repr(config) + config.model_dump_json()
+        assert masks == ([secret] if github_actions else [])
+        reporter.info("Checking actions")
+        return UpdateReport(files=())
+
+    monkeypatch.setattr(_RUN_UPDATE, update)
+    args = ["--dry-run", "--format", output]
+    if token_source == "argument":
+        args += ["--token", secret]
+    else:
+        monkeypatch.setenv("GHA_UPDATE_TOKEN", secret)
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0, result.output
+    assert secret not in result.output
+    if output == "json":
+        assert json.loads(result.stdout) == {"files": [], "wrote": False}

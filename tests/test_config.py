@@ -131,6 +131,30 @@ release_types = ["patch"]
     assert config.release_types == {ReleaseType.PATCH}
 
 
+def test_conflicting_sources_prefer_cli_then_environment_then_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.update-gha]\n"
+        'token = "project-token"\n'
+        'update_version_with = "default-branch-sha"\n'
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GITHUB_TOKEN", "github-token")
+    monkeypatch.setenv("GHA_UPDATE_TOKEN", "environment-token")
+    monkeypatch.setenv("GHA_UPDATE_UPDATE_VERSION_WITH", "release-commit-sha")
+    config = configuration_from_cli()
+    assert config.update_version_with is UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA
+    assert config.token is not None
+    assert config.token.get_secret_value() == "environment-token"
+    config = configuration_from_cli(
+        token="cli-token", update_version_with=UpdateVersionWith.LATEST_RELEASE_TAG
+    )
+    assert config.update_version_with is UpdateVersionWith.LATEST_RELEASE_TAG
+    assert config.token is not None
+    assert config.token.get_secret_value() == "cli-token"
+
+
 def test_release_types_all() -> None:
     config = Configuration.model_validate({"release_types": "all"})
     assert config.release_types == {
@@ -299,11 +323,12 @@ def test_resolve_head() -> None:
     assert name.startswith("gh-actions-update-")
     assert force is False
     name, force = Configuration.model_validate(
-        {"pull_request_branch": "actions-update"}
+        {"pull_request_branch": " actions-update "}
     ).resolve_head()
     assert name == "actions-update" and force is True
-    with pytest.raises(ValueError, match="main"):
-        Configuration.model_validate({"pull_request_branch": "main"}).resolve_head()
+    for branch in ("main", "master", " MAIN ", " MaStEr "):
+        with pytest.raises(ValueError, match=branch.strip().lower()):
+            Configuration.model_validate({"pull_request_branch": branch}).resolve_head()
 
 
 def test_reviewer_tuple_from_list_or_junk() -> None:

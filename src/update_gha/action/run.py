@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+import github_action_utils as gha
 from git import Repo
 
 from update_gha.action.git import (
@@ -17,7 +18,7 @@ from update_gha.action.git import (
 )
 from update_gha.action.pulls import add_labels, add_reviewers, create_pull_request
 from update_gha.config import Configuration
-from update_gha.log import Reporter
+from update_gha.log import Reporter, mask_secret
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,7 @@ class PullRequestContext:
 
 def prepare(config: Configuration, reporter: Reporter) -> PullRequestContext | None:
     """Validate pull-request settings and git state without changing files."""
+    mask_secret(config.token)
     if not config.token or not config.repository:
         reporter.error("A GitHub token and repository are required for --pull-request.")
         return None
@@ -68,6 +70,7 @@ def run(
     context: PullRequestContext | None = None,
 ) -> int:
     """Commit, push, and open the pull request. Returns a process exit code."""
+    mask_secret(config.token)
     active = context if context is not None else prepare(config, reporter)
     if active is None:
         return 1
@@ -96,7 +99,7 @@ def run(
         body=body,
     )
     if number is not None:
-        write_outputs(config, number)
+        write_outputs(number)
         add_reviewers(
             config,
             reporter,
@@ -113,10 +116,9 @@ def run(
     return 0
 
 
-def write_outputs(config: Configuration, number: int) -> None:
-    """Append both public pull request number outputs when a path is configured."""
-    if (path := config.github_output) is None:
+def write_outputs(number: int) -> None:
+    """Publish both pull request number outputs through github-action-utils."""
+    if not gha.vars.github.output:
         return
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(f"GHA_UPDATE_PR_NUMBER={number}\n")
-        handle.write(f"pull-request-number={number}\n")
+    gha.set_output("GHA_UPDATE_PR_NUMBER", number)
+    gha.set_output("pull-request-number", number)

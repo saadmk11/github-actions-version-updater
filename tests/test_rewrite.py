@@ -67,6 +67,7 @@ def test_rewrite_fixtures(fixture_base: str) -> None:
 def test_idempotent_double_run() -> None:
     input_text = _read("quoted_input.yml")
     first_pass = _apply(input_text)
+    assert first_pass == _read("quoted_expected.yml")
     assert first_pass == _apply(first_pass)
 
 
@@ -189,10 +190,6 @@ def test_preserves_line_endings() -> None:
     assert result.count("\r\n") == text.count("\r\n")
 
 
-def test_missing_colon_key_is_ignored() -> None:
-    assert apply_version_updates("x", {"nocolon": "v2"}) == "x"
-
-
 def test_same_version_is_idempotent() -> None:
     text = "- uses: actions/checkout@v3\n"
     assert apply_version_updates(text, {"actions/checkout@v3": "v3"}) == text
@@ -235,5 +232,6 @@ def test_one_unrewritable_token_does_not_block_others() -> None:
 
 @pytest.mark.parametrize("action", ["missing-version", "@v1"])
 def test_incomplete_action_reference_is_unchanged(action: str) -> None:
-    text = f"- uses: {action}\n"
+    text = f"- uses: '{action}'\n"
+    assert get_all_actions(text) == frozenset({action})
     assert apply_version_updates(text, {action: "v2"}) == text

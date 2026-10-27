@@ -31,13 +31,15 @@ def test_default_workflow_dir(tmp_path: Path) -> None:
 
 def test_extra_file_and_directory(tmp_path: Path) -> None:
     extra_dir = tmp_path / "more"
-    extra_dir.mkdir()
-    nested = extra_dir / "other.yaml"
+    nested_dir = extra_dir / "nested"
+    nested_dir.mkdir(parents=True)
+    nested = nested_dir / "other.yaml"
     nested.write_text("name: other\n", encoding="utf-8")
+    (nested_dir / "notes.txt").write_text("Not a workflow.\n", encoding="utf-8")
     single = tmp_path / "one.yml"
     single.write_text("name: one\n", encoding="utf-8")
     extras = collect_extra_files(
-        [str(extra_dir), str(single)],
+        [str(single), str(extra_dir), str(nested)],
         silent_reporter(),
         workspace=tmp_path,
     )
@@ -46,7 +48,7 @@ def test_extra_file_and_directory(tmp_path: Path) -> None:
         reporter=silent_reporter(),
         workspace=tmp_path,
     )
-    assert {path.name for path in found} == {"other.yaml", "one.yml"}
+    assert found == (nested.resolve(), single.resolve())
 
 
 def test_missing_paths_are_skipped(tmp_path: Path) -> None:

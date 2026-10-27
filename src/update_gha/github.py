@@ -7,14 +7,13 @@ from urllib.parse import quote, urljoin
 
 import httpx2
 from packaging.version import InvalidVersion, Version
-from pydantic import TypeAdapter, ValidationError
+from pydantic import SecretStr, TypeAdapter, ValidationError
 
-from update_gha.log import Reporter
+from update_gha.log import Reporter, mask_secret
 from update_gha.models import (
     BranchInfo,
     CommitInfo,
     GitHubCommitPayload,
-    GitHubMessagePayload,
     GitHubReleasePayload,
     GitHubRepoPayload,
     GitHubTagPayload,
@@ -86,7 +85,7 @@ class GitHubAPIError(RuntimeError):
     """GitHub request failed or returned an invalid response."""
 
 
-def request_headers(token: str | None) -> dict[str, str]:
+def request_headers(token: SecretStr | None) -> dict[str, str]:
     """Return GitHub API headers, adding bearer authentication when provided."""
     headers = {
         "Accept": "application/vnd.github+json",
@@ -94,12 +93,13 @@ def request_headers(token: str | None) -> dict[str, str]:
         "User-Agent": "update-gha",
     }
     if token:
-        headers["Authorization"] = f"Bearer {token}"
+        headers["Authorization"] = f"Bearer {token.get_secret_value()}"
     return headers
 
 
 class _ResponseAdapter:
     def __init__(self, status_code: int, text: str, headers: Mapping[str, str]) -> None:
+        """Store response data and normalize header names for lookup."""
         self.status_code = status_code
         self.text = text
         self._headers = {key.lower(): value for key, value in headers.items()}
@@ -113,6 +113,7 @@ class _Httpx2Session:
     """Adapt a pooled HTTPX2 client with explicit timeouts to ``HttpSession``."""
 
     def __init__(self) -> None:
+        """Create a pooled HTTP client with explicit timeouts and redirects off."""
         try:
             self._inner = httpx2.Client(
                 timeout=httpx2.Timeout(HTTP_TIMEOUT_SECONDS, connect=10),
@@ -121,7 +122,7 @@ class _Httpx2Session:
         except (httpx2.InvalidURL, ValueError) as exc:
             raise GitHubAPIError(
                 f"Could not initialize GitHub client ({type(exc).__name__})."
-            ) from exc
+            ) from None
 
     def get(self, url: str, headers: dict[str, str] | None = None) -> HttpResponse:
         """Fetch a URL with optional authentication headers."""
@@ -138,13 +139,19 @@ class GitHubClient:
 
     def __init__(
         self,
-        token: str | None,
+        token: SecretStr | None,
         reporter: Reporter,
         session: HttpSession | None = None,
         api_url: str = GITHUB_API_URL,
         sleeper: SleepFn | None = None,
     ) -> None:
+        """Configure authentication, transport, retry timing, and lookup caches.
+
+        A supplied session remains owned by the caller; otherwise create a pool
+        that is released by close().
+        """
         self._token = token
+        mask_secret(token)
         self._reporter = reporter
         self._sleeper: SleepFn = sleeper if sleeper is not None else time.sleep
         self._owned_session: _Httpx2Session | None
@@ -174,42 +181,20 @@ class GitHubClient:
     ) -> ResolvedVersion | None:
         """Resolve an eligible tag or SHA, returning None when no update applies."""
         match update_with:
-            case UpdateVersionWith.LATEST_RELEASE_TAG:
+            case (
+                UpdateVersionWith.LATEST_RELEASE_TAG
+                | UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA
+            ):
                 if not (
                     release := self._latest_release(
                         action_repository, current_version, release_types
                     )
                 ):
                     return None
-                return ResolvedVersion(version=release.tag_name, release=release)
-            case UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA:
-                lookup_version = current_version
-                restricted = release_types != frozenset(ReleaseType)
-                if restricted and _is_full_commit_sha(current_version):
-                    current_release = self._release_for_commit(
-                        action_repository, current_version
-                    )
-                    if current_release is None:
-                        self._reporter.warning(
-                            f"Could not match commit `{current_version}` to a semantic "
-                            f"release of `{action_repository}`; release type filtering "
-                            "cannot be applied safely. Skipping."
-                        )
+                if update_with is UpdateVersionWith.LATEST_RELEASE_TAG:
+                    if release.tag_name == current_version:
                         return None
-                    lookup_version = current_release.tag_name
-                elif restricted and parse_version(current_version) is None:
-                    self._reporter.warning(
-                        f"Current version (`{current_version}`) of "
-                        f"`{action_repository}` is not semantic; release type "
-                        "filtering cannot be applied safely. Skipping."
-                    )
-                    return None
-                if not (
-                    release := self._latest_release(
-                        action_repository, lookup_version, release_types
-                    )
-                ):
-                    return None
+                    return ResolvedVersion(version=release.tag_name, release=release)
                 commit = self._commit(action_repository, release.tag_name)
                 return ResolvedVersion(
                     version=commit.sha, release=release, commit=commit
@@ -233,19 +218,21 @@ class GitHubClient:
         assert_never(update_with)
 
     def _request(self, url: str) -> HttpResponse:
+        """Fetch a URL through bounded redirects restricted to the API origin."""
         for _ in range(MAX_REDIRECTS + 1):
             try:
                 response = self._session.get(url, headers=request_headers(self._token))
-            except (httpx2.HTTPError, httpx2.InvalidURL) as exc:
+            except (httpx2.HTTPError, httpx2.InvalidURL, ValueError) as exc:
                 raise GitHubAPIError(
                     f"Could not reach GitHub ({type(exc).__name__})."
-                ) from exc
+                ) from None
             if response.status_code not in REDIRECT_STATUSES:
                 return response
             url = redirect_target(url, response.header("location"), self._api_url)
         raise GitHubAPIError("GitHub returned too many redirects")
 
     def _get(self, url: str) -> HttpResponse:
+        """Retry transient failures using Retry-After or exponential delays."""
         delay = 1.0
         response = self._request(url)
         for attempt in range(1, MAX_RETRIES):
@@ -262,6 +249,7 @@ class GitHubClient:
         return response
 
     def _paginate(self, first_url: str) -> tuple[HttpResponse, ...]:
+        """Collect unique API pages, rejecting links outside the API origin."""
         pages: list[HttpResponse] = []
         url: str | None = first_url
         seen: set[str] = set()
@@ -279,15 +267,16 @@ class GitHubClient:
         return tuple(pages)
 
     def _releases(self, action_repository: str) -> tuple[ReleaseInfo, ...]:
+        """Cache published releases, sorting versioned tags before other tags."""
         if (cached := self._release_cache.get(action_repository)) is not None:
             return cached
         url = f"{self._api_url}/repos/{action_repository}/releases?per_page={PAGE_SIZE}"
         releases: list[ReleaseInfo] = []
         for response in self._paginate(url):
             if response.status_code != 200:
+                detail = error_summary(response.status_code)
                 raise GitHubAPIError(
-                    f"Could not get releases for {action_repository}: "
-                    f"{error_summary(response.status_code, response.text)}"
+                    f"Could not get releases for {action_repository}: {detail}"
                 )
             for payload in _validate_response(
                 _RELEASE_LIST, response.text, context="release list"
@@ -313,45 +302,63 @@ class GitHubClient:
     def _latest_release(
         self,
         action_repository: str,
-        current_version: str,
+        current_ref: str,
         release_types: frozenset[ReleaseType],
     ) -> ReleaseInfo | None:
+        """Select an eligible release independently of the desired pin format."""
         if not (releases := self._releases(action_repository)):
             return None
 
-        if (parsed_current := parse_version(current_version)) is None:
-            self._reporter.warning(
-                f"Current version (`{current_version}`) of `{action_repository}` "
-                "does not follow Semantic Versioning specification. This can yield "
-                "unexpected results, please be careful while using the updates "
-                "suggested by this action."
+        restricted = release_types != frozenset(ReleaseType)
+        if restricted:
+            current_version = self._current_release_version(
+                action_repository, current_ref
             )
-            if release_types != frozenset(ReleaseType):
+            if current_version is None:
                 self._reporter.warning(
-                    "Release type filtering requires a semantic current version. "
-                    "Skipping."
+                    f"Could not determine a semantic release for `{current_ref}` "
+                    f"on `{action_repository}`; release type filtering cannot be "
+                    "applied safely. Skipping."
                 )
                 return None
+        else:
+            current_version = (
+                None if _is_full_commit_sha(current_ref) else parse_version(current_ref)
+            )
+
+        if current_version is None:
             return releases[0]
 
         matches_filter = _release_filter(release_types)
         for release in releases:
             if release.tag_version is None:
                 continue
-            if matches_filter(release.tag_version, parsed_current):
+            # The same release may still need a tag-to-SHA conversion.
+            if release.tag_version == current_version or matches_filter(
+                release.tag_version, current_version
+            ):
                 return release
 
-        if all(release.tag_version is None for release in releases):
-            self._reporter.warning(
-                f"GitHub releases of `{action_repository}` do not follow "
-                "Semantic Versioning specification. This can yield unexpected "
-                "results, please be careful while using the updates suggested "
-                "by this action."
-            )
+        if not restricted and all(release.tag_version is None for release in releases):
             return releases[0]
         return None
 
+    def _current_release_version(
+        self, action_repository: str, current_ref: str
+    ) -> Version | None:
+        """Use full versions directly and resolve other refs through release SHAs."""
+        if _is_full_commit_sha(current_ref):
+            current_sha = current_ref
+        else:
+            version = parse_version(current_ref)
+            if version is not None and len(version.release) >= 3:
+                return version
+            current_sha = self._commit(action_repository, current_ref).sha
+        current_release = self._release_for_commit(action_repository, current_sha)
+        return current_release.tag_version if current_release is not None else None
+
     def _commit(self, action_repository: str, tag_or_branch: str) -> CommitInfo:
+        """Resolve and cache the latest commit for a tag or branch reference."""
         cache_key = (action_repository, tag_or_branch)
         if cached := self._commit_cache.get(cache_key):
             return cached
@@ -359,10 +366,10 @@ class GitHubClient:
         url = f"{self._api_url}/repos/{action_repository}/commits?sha={encoded_ref}"
         response = self._get(url)
         if response.status_code != 200:
+            detail = error_summary(response.status_code)
             raise GitHubAPIError(
                 f"Could not get commit data for {tag_or_branch} on "
-                f"{action_repository}: "
-                f"{error_summary(response.status_code, response.text)}"
+                f"{action_repository}: {detail}"
             )
         if not (
             commits := _validate_response(
@@ -385,6 +392,7 @@ class GitHubClient:
     def _release_for_commit(
         self, action_repository: str, current_sha: str
     ) -> ReleaseInfo | None:
+        """Cache the highest full release version matching a SHA, or None."""
         cache_key = (action_repository, current_sha)
         if cache_key in self._release_sha_cache:
             return self._release_sha_cache[cache_key]
@@ -392,15 +400,15 @@ class GitHubClient:
         releases_by_tag = {
             release.tag_name: release
             for release in self._releases(action_repository)
-            if release.tag_version is not None
+            if release.tag_version is not None and len(release.tag_version.release) >= 3
         }
         url = f"{self._api_url}/repos/{action_repository}/tags?per_page={PAGE_SIZE}"
         matches: list[ReleaseInfo] = []
         for response in self._paginate(url):
             if response.status_code != 200:
+                detail = error_summary(response.status_code)
                 raise GitHubAPIError(
-                    f"Could not get tags for {action_repository}: "
-                    f"{error_summary(response.status_code, response.text)}"
+                    f"Could not get tags for {action_repository}: {detail}"
                 )
             tags = _validate_response(_TAG_LIST, response.text, context="tag list")
             matches.extend(
@@ -419,12 +427,13 @@ class GitHubClient:
         return found
 
     def _default_branch(self, action_repository: str) -> str:
+        """Fetch the repository's default branch name or raise GitHubAPIError."""
         url = f"{self._api_url}/repos/{action_repository}"
         response = self._get(url)
         if response.status_code != 200:
+            detail = error_summary(response.status_code)
             raise GitHubAPIError(
-                f"Could not get the default branch for {action_repository}: "
-                f"{error_summary(response.status_code, response.text)}"
+                f"Could not get the default branch for {action_repository}: {detail}"
             )
         payload = _validate_response(_REPOSITORY, response.text, context="repository")
         return payload.default_branch
@@ -446,10 +455,11 @@ def next_page_url(link_header: str | None) -> str | None:
 
 
 def _validate_response[T](adapter: TypeAdapter[T], raw: str, *, context: str) -> T:
+    """Validate JSON, wrapping schema failures in GitHubAPIError."""
     try:
         return adapter.validate_json(raw)
-    except ValidationError as exc:
-        raise GitHubAPIError(f"GitHub returned an invalid {context} response") from exc
+    except ValidationError:
+        raise GitHubAPIError(f"GitHub returned an invalid {context} response") from None
 
 
 def _same_commit(candidate: str, current: str) -> bool:
@@ -466,10 +476,12 @@ def _same_commit(candidate: str, current: str) -> bool:
 
 
 def _is_full_commit_sha(value: str) -> bool:
+    """Return whether a value contains exactly 40 hexadecimal characters."""
     return len(value) == 40 and all(character in _HEX_DIGITS for character in value)
 
 
 def _should_retry(response: HttpResponse) -> bool:
+    """Identify rate-limit responses and server failures eligible for retry."""
     if response.status_code == 429 or response.status_code >= 500:
         return True
     if response.status_code != 403:
@@ -485,14 +497,15 @@ def redirect_target(url: str, location: str | None, api_url: str) -> str:
     """Resolve a redirect within the API origin before forwarding credentials."""
     try:
         destination = urljoin(url, location or "")
-    except ValueError as exc:
-        raise GitHubAPIError("GitHub returned an invalid redirect URL") from exc
+    except ValueError:
+        raise GitHubAPIError("GitHub returned an invalid redirect URL") from None
     if not location or not _same_origin(destination, api_url):
         raise GitHubAPIError("GitHub returned an unexpected redirect origin")
     return destination
 
 
 def _same_origin(url: str, expected: str) -> bool:
+    """Match URL scheme, host, and port, rejecting credentials and invalid URLs."""
     try:
         actual = httpx2.URL(url)
         trusted = httpx2.URL(expected)
@@ -506,6 +519,7 @@ def _same_origin(url: str, expected: str) -> bool:
 
 
 def _retry_after_seconds(response: HttpResponse) -> float | None:
+    """Parse Retry-After as nonnegative seconds, or None if absent or invalid."""
     raw = response.header("retry-after")
     if raw is None:
         return None
@@ -515,28 +529,28 @@ def _retry_after_seconds(response: HttpResponse) -> float | None:
         return None
 
 
-def error_summary(status: int, body: str) -> str:
-    """HTTP status plus GitHub's ``message``, or a short body snippet."""
-    if not (stripped := body.strip()):
-        return f"HTTP {status}"
-    try:
-        payload = GitHubMessagePayload.model_validate_json(stripped)
-    except ValueError:
-        snippet = stripped.replace("\n", " ")[:160]
-        return f"HTTP {status}: {snippet}"
-    if payload.message:
-        return f"HTTP {status}: {payload.message}"
-    return f"HTTP {status}"
+def error_summary(status: int) -> str:
+    """Describe an HTTP failure without exposing response bodies or credentials."""
+    reason = {
+        401: "authentication failed",
+        403: "permission denied or rate limited",
+        404: "repository or resource unavailable",
+        422: "request validation failed",
+        429: "rate limited",
+    }.get(status, "request failed")
+    return f"HTTP {status}: {reason}"
 
 
 def _release_filter(
     release_types: frozenset[ReleaseType],
 ) -> Callable[[Version, Version], bool]:
+    """Build a predicate for permitted increases in release version components."""
     all_types = frozenset(ReleaseType)
     if release_types == all_types:
         return lambda release, current: release > current
 
     def matches(release_tag: Version, current_version: Version) -> bool:
+        """Check whether an allowed major, minor, or patch component increases."""
         checks: list[bool] = []
         if ReleaseType.MAJOR in release_types:
             checks.append(release_tag.major > current_version.major)

@@ -5,15 +5,15 @@
 [![GitHub Marketplace](https://img.shields.io/badge/Get%20It-on%20Marketplace-orange?style=flat-square)](https://github.com/marketplace/actions/github-actions-version-updater)
 [![PyPI](https://img.shields.io/pypi/v/update-gha?style=flat-square)](https://pypi.org/project/update-gha/)
 
-Scans workflow YAML for `uses:` pins, asks GitHub for a newer release tag, release commit, or default-branch SHA, and rewrites only the version token. Quotes, user comments, and line endings stay as they are. SHA pins also get a `# tag` comment so the version stays readable. Run it as a scheduled Action that opens a pull request, or as the `update-gha` CLI on your machine.
+Update GitHub Action pins in workflow YAML to a release tag, a release commit SHA, or the default-branch SHA. Run the GitHub Action to open pull requests automatically, or use the `update-gha` CLI to check and update files locally.
 
 | | [GitHub Action](#github-action) | [Python package](#python-package) |
 | --- | --- | --- |
 | **Use this when** | You want a scheduled job that opens a pull request | You want a CLI on your machine or in other CI |
-| **Add it with** | `uses: saadmk11/github-actions-version-updater@v1.0.2` | `pip install update-gha` or `uvx update-gha` |
+| **Add it with** | `uses: saadmk11/github-actions-version-updater@v1.0.3` | `pip install update-gha` or `uvx update-gha` |
 | **Pull requests** | Opened by default | Optional (`--pull-request`) |
 
-The Marketplace listing and GitHub repo are **github-actions-version-updater**. The PyPI project is **[update-gha](https://pypi.org/project/update-gha/)**. Same updater, two ways to run it.
+The GitHub repository and Marketplace listing are **github-actions-version-updater**. The Python package and CLI are **[update-gha](https://pypi.org/project/update-gha/)**.
 
 ## Contents
 
@@ -51,21 +51,21 @@ The Marketplace listing and GitHub repo are **github-actions-version-updater**. 
 
 ## GitHub Action
 
-Add a workflow to this repository. On a schedule (or when you run it by hand) the action scans `uses:` pins and opens a pull request with the updates.
+Add a workflow to the repository you want to update. The action scans `uses:` pins and opens a pull request with the updates.
 
 [Get it on the Marketplace](https://github.com/marketplace/actions/github-actions-version-updater)
 
-The action installs `update-gha[action]==1.0.2` from PyPI in an isolated CPython 3.14 environment and runs `update-gha --pull-request`. It ignores the consuming repository's Python environment and package-index settings.
+The action installs `update-gha[action]==1.0.3` from PyPI in an isolated CPython 3.14 environment and runs `update-gha --pull-request`. It ignores the consuming repository's Python environment and package-index settings.
 
-v1 is not a Docker image. Self-hosted runners need bash and outbound network so uv can install that isolated interpreter; Docker is not required.
+Self-hosted runners need Bash, Git, outbound network access, and an Actions runner that supports [Node 24 actions](https://github.com/actions/checkout#checkout-v5). Python is installed automatically.
 
 ### What it does
 
-Like Dependabot, but only for GitHub Actions:
+The action:
 
 - Finds `uses:` pins in `.github/workflows` and any extra paths you pass
 - Looks up a newer release tag, release commit, or default-branch SHA
-- Rewrites **only** the version token — quotes, user comments, and line endings stay as they are
+- Updates `uses:` pins while preserving YAML formatting, custom comments, and line endings
 - When pinning a release commit SHA, adds or updates a `# tag` comment so the diff shows a human-readable version
 - Commits the result and opens a pull request (unless you set `skip_pull_request`)
 
@@ -81,7 +81,7 @@ Local actions (`./path`) and container actions (`docker://…`) are not updated.
 4. Rewrite matching pins in place.
 5. Create a branch, push, and open a PR — unless `skip_pull_request` is `true`.
 
-Draft, prerelease, and unpublished GitHub releases are ignored.
+The two release modes use published GitHub Releases, excluding drafts and entries marked as prereleases. `default-branch-sha` follows the default branch regardless of releases.
 
 ### Quick start
 
@@ -93,24 +93,27 @@ name: GitHub Actions Version Updater
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 0 * * 0"   # every Sunday
+    - cron: "0 0 * * 0"   # Sunday at 00:00 UTC
+
+permissions:
+  contents: read
 
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           token: ${{ secrets.WORKFLOW_SECRET }}
 
       - name: Run GitHub Actions Version Updater
-        uses: saadmk11/github-actions-version-updater@v1.0.2
+        uses: saadmk11/github-actions-version-updater@v1.0.3
         with:
           token: ${{ secrets.WORKFLOW_SECRET }}
 ```
 
 > [!WARNING]
-> `${{ secrets.GITHUB_TOKEN }}` cannot update workflow files. Create a personal access token, store it as a repository secret, and pass that secret as `token` on **both** `actions/checkout` and this action. Details are in [Access token](#access-token).
+> `${{ secrets.GITHUB_TOKEN }}` cannot update workflow files. Create a personal access token, store it as a repository secret, and pass it as `token` on both `actions/checkout` and this action. Details are in [Access token](#access-token).
 
 ### Version sources
 
@@ -118,11 +121,13 @@ jobs:
 
 | Value | What is written | Example |
 | --- | --- | --- |
-| `release-tag` (default) | Latest published stable release tag | `actions/checkout@v4.2.2` |
-| `release-commit-sha` | Commit that the latest stable tag points at, plus a `# tag` comment | `actions/checkout@11bd7190…  # v4.2.2` |
-| `default-branch-sha` | Latest commit on the action's default branch | `actions/checkout@11bd7190…` |
+| `release-tag` (default) | Latest eligible published release tag | `actions/checkout@v7.0.1` |
+| `release-commit-sha` | Release tag's full commit SHA, plus a `# tag` comment where possible | `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1` |
+| `default-branch-sha` | Latest commit on the action's default branch | `actions/checkout@<default-branch-sha>` |
 
-A `# tag` comment makes SHA-to-SHA diffs readable (`# v4.1.0` → `# v4.2.2`). The comment is written with two spaces before `#`. If the line already has a version-like comment, it is updated to that form. A human comment such as `# pin for security` is left alone.
+In `release-commit-sha` mode, tag comments make SHA updates readable. Comments that contain only a version are updated; custom comments such as `# pin for security` are preserved. New tag comments use two spaces before `#`. Multiline scalars and entries followed by other YAML tokens on the same line are not annotated.
+
+The current pin can be a tag, branch, or full commit SHA. The selected mode controls the target independently.
 
 ### Release types
 
@@ -130,32 +135,36 @@ A `# tag` comment makes SHA-to-SHA diffs readable (`# v4.1.0` → `# v4.2.2`). T
 
 | Value | Updates when |
 | --- | --- |
-| `all` (default) | Any newer stable release |
-| `major` | The major component increases (`v3` → `v4`) |
-| `minor` | Same major, higher minor (`v4.1` → `v4.2`) |
-| `patch` | Same major and minor, higher patch (`v4.2.1` → `v4.2.2`) |
+| `all` (default) | Any stable release, regardless of bump type |
+| `major` | The major component increases (`v1.2.3` → `v2.0.0`) |
+| `minor` | Same major, higher minor (`v1.2.3` → `v1.3.0`) |
+| `patch` | Same major and minor, higher patch (`v1.2.3` → `v1.2.4`) |
 
 You can combine them: `minor, patch`.
 
+Both release modes use the same current version for filtering. Full versions such as `v1.2.3` are used directly, even without a GitHub Release entry. Branches, SHAs, and moving tags such as `v1` or `v1.2` are matched through their commit to a published release with a full version.
+
 Two cases leave a pin unchanged instead of guessing:
 
-- The current pin is not SemVer, and `release_types` is not `all`
-- `update_version_with` is `release-commit-sha`, `release_types` is restricted, and the current SHA cannot be matched to a release tag
+- A restricted filter is requested, but the current pin has no full version and cannot be matched to a release with one.
+- No published release is eligible under the selected filter.
+
+With `all`, a branch or SHA can select the latest release without matching a current release version. Switching between a tag and its SHA is still allowed when that release is already current. `default-branch-sha` ignores release-type filters.
 
 ### Action inputs
 
 | Name | Required | Description | Default |
 | --- | --- | --- | --- |
 | `token` | Yes | Personal access token that can update workflows. See [Access token](#access-token). | — |
-| `committer_username` | No | Git author name on the update commit | `github-actions[bot]` |
-| `committer_email` | No | Git author email on the update commit | `github-actions[bot]@users.noreply.github.com` |
+| `committer_username` | No | Git author and committer name on the update commit | `github-actions[bot]` |
+| `committer_email` | No | Git author and committer email on the update commit | `github-actions[bot]@users.noreply.github.com` |
 | `commit_message` | No | Commit message | `Update GitHub Action Versions` |
 | `pull_request_title` | No | Pull request title | `Update GitHub Action Versions` |
 | `pull_request_branch` | No | PR head branch. If set, that branch is force-pushed with lease. Cannot be `main`, `master`, or the repository base branch. | generated (`gh-actions-update-<id>`) |
-| `ignore` | No | Comma-separated pins to leave unchanged. Must match the `uses` value **exactly**, including the current version (`actions/checkout@v4`). | empty |
-| `skip_pull_request` | No | If `true`, write the updates, print a diff, and **fail the job** instead of opening a PR. | `false` |
+| `ignore` | No | Comma-separated pins to leave unchanged. Must match the `uses` value **exactly**, including the current version (`actions/checkout@v7`). | empty |
+| `skip_pull_request` | No | Write updates and print a diff instead of opening a PR. Fail the step if any file was updated. | `false` |
 | `update_version_with` | No | `release-tag`, `release-commit-sha`, or `default-branch-sha` | `release-tag` |
-| `release_types` | No | `all`, or any of `major`, `minor`, `patch` | `all` |
+| `release_types` | No | `all`, or a comma-separated combination of `major`, `minor`, `patch` | `all` |
 | `pull_request_user_reviewers` | No | Comma-separated usernames requested on a **new** PR | empty |
 | `pull_request_team_reviewers` | No | Comma-separated team slugs requested on a **new** PR | empty |
 | `pull_request_labels` | No | Comma-separated labels added on a **new** PR | empty |
@@ -173,20 +182,27 @@ Set only when this run created a pull request. Empty if you skipped the PR, noth
 | `pull-request-number` | Same value |
 
 ```yaml
+- uses: actions/checkout@v7
+  with:
+    token: ${{ secrets.WORKFLOW_SECRET }}
+
 - name: Run GitHub Actions Version Updater
   id: update
-  uses: saadmk11/github-actions-version-updater@v1.0.2
+  uses: saadmk11/github-actions-version-updater@v1.0.3
   with:
     token: ${{ secrets.WORKFLOW_SECRET }}
 
 - name: Use the pull request number
   if: steps.update.outputs.GHA_UPDATE_PR_NUMBER
-  run: echo "Opened PR #${{ steps.update.outputs.GHA_UPDATE_PR_NUMBER }}"
+  run: |
+    echo "Opened PR #${{ steps.update.outputs.GHA_UPDATE_PR_NUMBER }}"
 ```
 
 ### Access token
 
-GitHub's default `${{ secrets.GITHUB_TOKEN }}` cannot push changes to workflow files. Create a [personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens), store it as a repository [Actions secret](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions), and pass that secret as `token` on **both** `actions/checkout` and this action.
+GitHub's default `${{ secrets.GITHUB_TOKEN }}` cannot push changes to workflow files. Create a [personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens), store it as a repository [Actions secret](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions), and pass it as `token` on both `actions/checkout` and this action. Keep checkout's credential persistence enabled (the default): checkout authenticates Git pushes, and this action's token authenticates GitHub API requests.
+
+The `permissions: contents: read` setting in the examples limits GitHub's automatically generated `GITHUB_TOKEN`. It does not restrict the PAT, whose write access is configured separately. See [workflow permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions).
 
 #### Classic PAT
 
@@ -212,6 +228,8 @@ Create a [fine-grained token](https://github.com/settings/personal-access-tokens
 
 #### All inputs
 
+Replace committer details, reviewer names, team slugs, labels, ignored pins, and paths with values for your repository.
+
 ```yaml
 name: GitHub Actions Version Updater
 
@@ -220,16 +238,19 @@ on:
   schedule:
     - cron: "0 0 * * 0"
 
+permissions:
+  contents: read
+
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           token: ${{ secrets.WORKFLOW_SECRET }}
 
       - name: Run GitHub Actions Version Updater
-        uses: saadmk11/github-actions-version-updater@v1.0.2
+        uses: saadmk11/github-actions-version-updater@v1.0.3
         with:
           token: ${{ secrets.WORKFLOW_SECRET }}
           committer_username: "actions-bot"
@@ -237,7 +258,8 @@ jobs:
           commit_message: "chore: bump GitHub Actions"
           pull_request_title: "chore: bump GitHub Actions"
           pull_request_branch: "actions-update"
-          ignore: "actions/checkout@v4, actions/cache@v4"
+          ignore: "actions/checkout@v7, actions/cache@v4"
+          skip_pull_request: "false"
           update_version_with: "release-tag"
           release_types: "minor, patch"
           pull_request_user_reviewers: "octocat, hubot"
@@ -248,11 +270,11 @@ jobs:
 
 #### Write updates without a pull request
 
-Writes the files, prints a diff, and fails the job if anything changed. Use this when another step or a person should commit.
+Writes updated files and prints a diff. The step fails if updates were written and succeeds if nothing changed. It does not commit or push; another step or a person can commit the files.
 
 ```yaml
 - name: Run GitHub Actions Version Updater
-  uses: saadmk11/github-actions-version-updater@v1.0.2
+  uses: saadmk11/github-actions-version-updater@v1.0.3
   with:
     token: ${{ secrets.WORKFLOW_SECRET }}
     skip_pull_request: "true"
@@ -260,27 +282,29 @@ Writes the files, prints a diff, and fails the job if anything changed. Use this
 
 ### Git LFS
 
-If the repository uses [Git LFS](https://git-lfs.github.com/), check out with `lfs: false` or remove the LFS hooks before this action runs. Otherwise creating the update branch can fail when the LFS binary is not on the runner.
+If the repository uses [Git LFS](https://git-lfs.github.com/), install Git LFS on the runner when its hooks are needed. If Git LFS is unavailable, use `lfs: false` during checkout and remove any remaining LFS hooks before this action runs. Otherwise branch creation or pushing can fail. Remove the files below only if they are LFS hooks.
 
 ```yaml
-- uses: actions/checkout@v4
+- uses: actions/checkout@v7
   with:
     token: ${{ secrets.WORKFLOW_SECRET }}
     lfs: false
 
 - name: Remove LFS hooks
+  shell: bash
   run: |
-    rm -f .git/hooks/post-checkout .git/hooks/pre-push
+    rm -f "$(git rev-parse --git-path hooks/post-checkout)" \
+          "$(git rev-parse --git-path hooks/pre-push)"
 
 - name: Run GitHub Actions Version Updater
-  uses: saadmk11/github-actions-version-updater@v1.0.2
+  uses: saadmk11/github-actions-version-updater@v1.0.3
   with:
     token: ${{ secrets.WORKFLOW_SECRET }}
 ```
 
 ### Alternative
 
-[Dependabot](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/keeping-your-actions-up-to-date-with-dependabot) can also bump GitHub Actions. Prefer this action when you want SHA pins, default-branch tips, ignore lists that match exact `uses` values, or one scheduled PR with your own title, reviewers, and labels.
+[Dependabot](https://docs.github.com/en/code-security/concepts/supply-chain-security/dependabot-version-updates#updates-for-actions) can also update GitHub Actions, including references pinned to commit SHAs.
 
 ---
 
@@ -304,15 +328,17 @@ If the repository uses [Git LFS](https://git-lfs.github.com/), check out with `l
 Requires **Python 3.12+**.
 
 ```bash
-# one-off
+# Run once without installing
 uvx update-gha --help
+
+# Install with pip
 pip install update-gha
 
-# in a project
-uv add update-gha
+# Add to a uv project's development dependencies
+uv add --dev update-gha
 uv run update-gha --check
 
-# user-wide tool
+# Install as a user-wide tool
 uv tool install update-gha
 ```
 
@@ -320,7 +346,7 @@ Install the `[action]` extra for `--pull-request` support:
 
 ```bash
 pip install 'update-gha[action]'
-uv add 'update-gha[action]'
+uv add --dev 'update-gha[action]'
 uv tool install 'update-gha[action]'
 ```
 
@@ -333,7 +359,7 @@ uv tool install 'update-gha[action]'
 
 | Situation | Token needed? |
 | --- | --- |
-| Public actions, local rewrite / `--check` / `--dry-run` | No. Passing one avoids the unauthenticated API rate limit. |
+| Public actions, local rewrite / `--check` / `--dry-run` | Optional. A token provides a higher API rate limit. |
 | Private action repositories | Yes |
 | `--pull-request` | Yes, plus `owner/repo` (`--repository` or `GITHUB_REPOSITORY`) |
 
@@ -345,7 +371,7 @@ update-gha --check                  # do not write; exit 1 if any pin would chan
 update-gha --dry-run --diff         # do not write; print the plan and a unified diff
 update-gha --fail-on-update         # write, then exit 1 if anything was written
 update-gha --format json
-update-gha --ignore 'actions/checkout@v4'
+update-gha --ignore 'actions/checkout@v7'
 update-gha --update-version-with release-tag --release-types 'minor,patch'
 update-gha path/to/extra.yaml
 ```
@@ -358,11 +384,11 @@ export GITHUB_REPOSITORY=owner/repo
 update-gha --pull-request
 ```
 
-`--token` and `--repository` work instead of those environment variables. Tracked files must be clean so the commit contains only updater changes; untracked files are left alone.
+`--token` and `--repository` work instead of those environment variables. Git push authentication must already be configured; the token option authenticates GitHub API requests. Prefer an environment variable for the token to keep it out of process arguments. Tracked files must be clean so the commit contains only updater changes. Unrelated untracked files are left alone.
 
 ### Configuration
 
-Read in this order (later sources lose to earlier ones):
+Settings are applied in this order, highest priority first:
 
 1. CLI flags
 2. Environment variables (`GHA_UPDATE_*`, plus `GITHUB_TOKEN` / `GITHUB_REPOSITORY`)
@@ -371,7 +397,7 @@ Read in this order (later sources lose to earlier ones):
 
 ```bash
 export GITHUB_TOKEN=...
-export GHA_UPDATE_IGNORE_ACTIONS='actions/checkout@v4'
+export GHA_UPDATE_IGNORE_ACTIONS='actions/checkout@v7'
 export GHA_UPDATE_UPDATE_VERSION_WITH=release-tag
 export GHA_UPDATE_RELEASE_TYPES='minor,patch'
 update-gha
@@ -379,7 +405,7 @@ update-gha
 
 ```toml
 [tool.update-gha]
-ignore_actions = ["actions/checkout@v4"]
+ignore_actions = ["actions/checkout@v7"]
 update_version_with = "release-tag"
 release_types = ["minor", "patch"]
 extra_workflow_locations = ["deploy/workflows"]
@@ -401,20 +427,22 @@ You can also enable pull-request mode with `GHA_UPDATE_CREATE_PULL_REQUEST=true`
 | `PATHS` | Extra files or directories as positional arguments. Same role as `--extra-workflow-locations`. | none |
 | `--check` | Do not write. Exit 1 if any pin would change. | off |
 | `--dry-run` | Do not write. Exit 0 even if updates exist. | off |
-| `--diff` | Print a unified diff. Works with write, `--check`, and `--dry-run`. | off |
+| `--diff` | Print a unified diff with text output. Works with writing, `--check`, and `--dry-run`. | off |
 | `--fail-on-update` | Write, then exit 1 if any file was written. Incompatible with `--pull-request`, `--check`, and `--dry-run`. | off |
 | `--format` | `text` or `json`. JSON sends logs to stderr. | `text` |
-| `--verbose` / `--quiet` | Debug logs, or warnings and errors only. Mutually exclusive. | off |
-| `--pull-request` | Commit, push, and open a PR. Needs `update-gha[action]`, `--token`, `--repository`, and a clean tracked tree. | off |
+| `--verbose` (`-v`) / `--quiet` (`-q`) | Debug logs, or warnings and errors only. Mutually exclusive. | off |
+| `--pull-request` / `--no-pull-request` | Enable or disable PR creation. Requires `update-gha[action]`, a token, a repository name, configured Git push authentication, and a clean tracked working tree. | off |
 | `--repository` | `owner/repo` that receives the PR. Also `GITHUB_REPOSITORY`. Unused for a local rewrite. | unset |
-| `--committer-username` | Git author name for the PR commit. | `github-actions[bot]` |
-| `--committer-email` | Git author email for the PR commit. | `github-actions[bot]@users.noreply.github.com` |
+| `--committer-username` | Git author and committer name for the PR commit. | `github-actions[bot]` |
+| `--committer-email` | Git author and committer email for the PR commit. | `github-actions[bot]@users.noreply.github.com` |
 | `--commit-message` | Message for the PR commit. | `Update GitHub Action Versions` |
 | `--pull-request-title` | Title of the pull request. | `Update GitHub Action Versions` |
-| `--pull-request-branch` | Head branch. Omit for a unique name; a given name is force-pushed. Cannot be the base branch. | generated (`gh-actions-update-<id>`) |
+| `--pull-request-branch` | Head branch. Omit for a unique name; a given name is force-pushed with lease. Cannot be `main`, `master`, or the repository base branch. | generated (`gh-actions-update-<id>`) |
 | `--pull-request-reviewers` | Usernames requested on a **new** PR, comma-separated. | empty |
 | `--pull-request-teams` | Team slugs requested on a **new** PR, comma-separated. | empty |
 | `--pull-request-labels` | Labels added on a **new** PR, comma-separated. | empty |
+| `--version` | Print the package version and exit. | — |
+| `--help` | Show available options and exit. | — |
 
 See `update-gha --help` for the full text.
 
@@ -426,8 +454,9 @@ The package lives in `src/update_gha`. Tests are in `tests/`. Tooling is configu
 
 ### Prerequisites
 
-- Python **3.12+** (CI tests 3.12–3.15; `.python-version` is `3.14`)
+- Python **3.14** for the development environment; the package supports **3.12+**
 - [uv](https://docs.astral.sh/uv/) **0.13.4** or newer
+- Git for the integration tests
 
 ### Setup
 
@@ -512,8 +541,9 @@ uv run python -m update_gha --check
 ### Release
 
 1. Set the version in `pyproject.toml`, the exact `[action]` PyPI pin in `action.yaml`, and the documented action references. Run `uv lock` and commit the lockfile with the release changes.
-2. Run `uv run --locked tox` and `uv run --locked python -m tests.packaging.check --release v1.0.2`.
-3. Push the matching release tag (`v1.0.2`). The release workflow runs CI, builds with `uv build --no-sources`, validates the distributions, and uploads them for publication.
+2. Run `uv run --locked tox` and `uv run --locked python -m tests.packaging.check --release v1.0.3`.
+3. Push the matching release tag (`v1.0.3`). The release workflow runs CI, builds with `uv build --no-sources`, validates the distributions, and publishes to PyPI through trusted publishing.
+4. Wait for the release workflow to finish before using the new action tag. The action installs the exact matching PyPI version.
 
 ### CI
 

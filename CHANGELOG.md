@@ -1,3 +1,16 @@
+# Version: v1.0.3
+
+* Apply release-type filters consistently across tags, branches, and commit SHAs. Resolve moving tags through their commits using full release versions, and accept full version tags without a GitHub Release entry.
+* Allow switching between a release tag and its commit SHA when the release is already current.
+* Remove incorrect SemVer warnings for SHA and branch pins, and report absent updates without warnings.
+* Exclude unchanged and unrewritable pins from update counts and pull-request descriptions.
+* Keep tokens wrapped in `SecretStr`, register runner masks through `github-action-utils`, and omit raw API responses and Git diagnostics from failure messages. Handle malformed token headers through normal API error reporting.
+* Use `github-action-utils` for workflow logging, groups, masks, summaries, and outputs.
+* Add security guidance, function docstrings, and regression coverage for reference selection and credential handling.
+* Update locked cachetools, coverage, Ruff, and virtualenv dependencies.
+
+CLI flags, action inputs, and action outputs remain unchanged.
+
 # Version: v1.0.2
 
 * Install `update-gha[action]==1.0.2` from PyPI in an isolated CPython 3.14 environment.

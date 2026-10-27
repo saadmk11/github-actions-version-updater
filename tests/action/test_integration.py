@@ -4,6 +4,7 @@ import json
 from contextlib import ExitStack
 from pathlib import Path
 
+import github_action_utils as gha
 import httpx2
 import pytest
 from git import Actor, Repo
@@ -32,6 +33,10 @@ def test_action_updates_workflows_with_real_git(
         repo.index.add([str(workflow), str(unrelated)])
         actor = Actor("Author", "author@example.com")
         original = repo.index.commit("Initial commit", author=actor, committer=actor)
+        hooks = workspace / ".git" / "hooks"
+        hook = hooks / "pre-commit"
+        hook.write_text('#!/bin/sh\nprintf "hook executed" > hook-ran\n')
+        hook.chmod(0o755)
         repo.create_remote("origin", str(tmp_path / "remote.git"))
         repo.git.push("origin", "main")
         (workspace / "untracked.txt").write_text(
@@ -114,6 +119,7 @@ def test_action_updates_workflows_with_real_git(
                 },
             )
         assert result.exit_code == (1 if skip else 0), result.output
+        assert (workspace / "hook-ran").exists() == (not skip)
         assert "owner/action@v2" in workflow.read_text()
         assert unrelated.read_text() == "Keep this file.\n"
         if skip:
@@ -127,10 +133,12 @@ def test_action_updates_workflows_with_real_git(
             assert updated.author.email == "bot@example.com"
             assert updated.stats.files.keys() == {".github/workflows/ci.yml"}
             assert remote.commit("refs/heads/main") == original
-            assert (
-                output.read_text()
-                == "GHA_UPDATE_PR_NUMBER=42\npull-request-number=42\n"
-            )
+            with monkeypatch.context() as environment:
+                environment.setenv("GITHUB_ENV", str(output))
+                assert gha.get_workflow_environment_variables() == {
+                    "GHA_UPDATE_PR_NUMBER": "42",
+                    "pull-request-number": "42",
+                }
             assert len(requests) == 4
 
 

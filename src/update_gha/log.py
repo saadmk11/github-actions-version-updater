@@ -1,16 +1,15 @@
 """CLI and GitHub Actions log reporters."""
 
 import logging
-import os
 import sys
 from collections.abc import Generator
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, contextmanager, redirect_stdout
 from enum import IntEnum
-from io import TextIOWrapper
 from typing import Protocol, TextIO, override
 
 import github_action_utils as gha
 import typer
+from pydantic import SecretStr
 
 LOGGER_NAME = "update_gha"
 
@@ -110,6 +109,7 @@ class CliReporter:
     """Plain ``LEVEL: message`` reporter for local CLI use."""
 
     def __init__(self, logger: logging.Logger) -> None:
+        """Bind CLI progress and summary reporting to the supplied logger."""
         self._logger = logger
 
     def info(self, message: str) -> None:
@@ -139,10 +139,6 @@ class CliReporter:
         yield
 
 
-def _escape_workflow_message(message: str) -> str:
-    return message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-
-
 def _escape_workflow_text(message: str) -> str:
     """Prevent plain text from triggering modern or legacy runner commands."""
     # ANSI stripping must not join separated command markers.
@@ -151,37 +147,51 @@ def _escape_workflow_text(message: str) -> str:
     )
 
 
-def _write_workflow_line(stream: TextIO, message: str) -> None:
-    # The runner consumes UTF-8 even when a Windows text stream uses another encoding.
-    if isinstance(stream, TextIOWrapper):
-        stream.flush()
-        stream.buffer.write((message + "\n").encode("utf-8"))
-        stream.flush()
-    else:
-        print(message, file=stream, flush=True)
+@contextmanager
+def _workflow_output(stream: TextIO) -> Generator[None]:
+    """Route utility output to a stream and restore the global output settings."""
+    # The library writes to stdout. Keep redirection local to each emission and
+    # prevent subprocesses from bypassing the chosen stream (JSON uses stderr).
+    use_subprocess = gha.COMMANDS_USE_SUBPROCESS
+    gha.COMMANDS_USE_SUBPROCESS = False
+    try:
+        with redirect_stdout(stream):
+            yield
+    finally:
+        gha.COMMANDS_USE_SUBPROCESS = use_subprocess
+
+
+def mask_secret(secret: SecretStr | None) -> None:
+    """Register a credential with the runner while keeping JSON stdout clean."""
+    if secret and running_on_github_actions():
+        with _workflow_output(sys.stderr):
+            gha.add_mask(secret.get_secret_value())
 
 
 class GitHubActionsHandler(logging.Handler):
-    """Emit ``::notice::`` / ``::warning::`` / ``::error::`` workflow commands."""
+    """Send logging records through github-action-utils workflow commands."""
 
     def __init__(self, stream: TextIO | None = None) -> None:
+        """Send workflow commands to the supplied stream or stdout by default."""
         super().__init__()
         self._stream = stream if stream is not None else sys.stdout
 
     @override
     def emit(self, record: logging.LogRecord) -> None:
+        """Emit a record through the matching utility command, handling errors."""
         try:
-            message = _escape_workflow_message(self.format(record))
-            match record.levelno:
-                case level if level >= logging.ERROR:
-                    message = f"::error::{message}"
-                case level if level >= logging.WARNING:
-                    message = f"::warning::{message}"
-                case level if level >= logging.INFO:
-                    message = f"::notice::{message}"
-                case _:
-                    message = _escape_workflow_text(message)
-            _write_workflow_line(self._stream, message)
+            message = self.format(record)
+            with _workflow_output(self._stream):
+                match record.levelno:
+                    case level if level >= logging.ERROR:
+                        gha.error(message)
+                    case level if level >= logging.WARNING:
+                        gha.warning(message)
+                    case level if level >= logging.INFO:
+                        gha.notice(message)
+                    case _:
+                        # --verbose must work without the runner's debug setting.
+                        gha.echo(_escape_workflow_text(message))
         except Exception:
             self.handleError(record)
 
@@ -190,6 +200,7 @@ class GitHubActionsReporter:
     """Reporter that uses workflow commands, log groups, and the job summary."""
 
     def __init__(self, logger: logging.Logger, stream: TextIO | None = None) -> None:
+        """Bind workflow reporting to a logger and an optional output stream."""
         self._logger = logger
         self._stream = stream if stream is not None else sys.stdout
 
@@ -197,7 +208,8 @@ class GitHubActionsReporter:
         """Report progress at the normal verbosity level."""
         if not self._logger.isEnabledFor(logging.INFO):
             return
-        _write_workflow_line(self._stream, _escape_workflow_text(message))
+        with _workflow_output(self._stream):
+            gha.echo(_escape_workflow_text(message))
 
     def notice(self, message: str) -> None:
         """Report a user-facing informational notice."""
@@ -213,7 +225,7 @@ class GitHubActionsReporter:
 
     def add_summary(self, markdown: str) -> None:
         """Append raw Markdown when GITHUB_STEP_SUMMARY is configured."""
-        if not os.environ.get("GITHUB_STEP_SUMMARY"):
+        if not gha.vars.github.step_summary:
             return
         gha.append_job_summary(markdown.removesuffix("\n"))
 
@@ -222,11 +234,11 @@ class GitHubActionsReporter:
         """Group related progress messages and close the group on failure."""
         enabled = self._logger.isEnabledFor(logging.INFO)
         if enabled:
-            _write_workflow_line(
-                self._stream, f"::group::{_escape_workflow_message(title)}"
-            )
+            with _workflow_output(self._stream):
+                gha.start_group(title)
         try:
             yield
         finally:
             if enabled:
-                _write_workflow_line(self._stream, "::endgroup::")
+                with _workflow_output(self._stream):
+                    gha.end_group()

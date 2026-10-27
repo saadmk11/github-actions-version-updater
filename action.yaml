@@ -130,7 +130,7 @@ runs:
         update_gha=(
           "$UPDATE_GHA_UV" --no-config tool run --isolated --no-env-file
           --managed-python --python 3.14 --default-index https://pypi.org/simple
-          --from 'update-gha[action]==1.0.2' update-gha
+          --from 'update-gha[action]==1.0.3' update-gha
         )
         case "${GHA_UPDATE_SKIP_PULL_REQUEST}" in
           true|True|TRUE|1)
