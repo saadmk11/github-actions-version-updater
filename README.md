@@ -342,7 +342,7 @@ uv run update-gha --check
 uv tool install update-gha
 ```
 
-Install the `[action]` extra for `--pull-request` support:
+Install the `[action]` extra to run on GitHub Actions or use `--pull-request`. It includes `github-action-utils` for runner reporting and GitPython for Git operations. The composite action installs this extra automatically.
 
 ```bash
 pip install 'update-gha[action]'
@@ -474,7 +474,7 @@ This installs the editable package, the `[action]` extra, and the `test`, `lint`
 | --- | --- |
 | `src/update_gha/` | Core package: scan, rewrite, GitHub lookup, config, models |
 | `src/update_gha/cli/` | `update-gha` console script |
-| `src/update_gha/action/` | Git + pull-request helpers (optional extra) |
+| `src/update_gha/action/` | GitHub Actions reporting and Git/pull-request helpers (optional extra) |
 | `tests/` | Pytest suite; `tests/fixtures/` are YAML rewrite pairs |
 | `action.yaml` | Composite GitHub Action with an exact PyPI package pin |
 | `tests/packaging/` | Release metadata and fresh wheel/sdist installation checks |
@@ -488,7 +488,7 @@ uv run --locked tox run -e base,coverage
 uv run --locked tox run -e minimum,latest
 ```
 
-Tox tests the installed wheel. Normal environments use `uv.lock`; `minimum` and `latest` resolve dependencies independently. The `coverage` environment requires **100%** statement and branch coverage. Warnings fail the suite. The `base` environment runs without GitPython.
+Tox tests the installed wheel. Normal environments use `uv.lock`; `minimum` and `latest` resolve dependencies independently. The `coverage` environment requires **100%** statement and branch coverage. Warnings fail the suite. The `base` environment runs without GitPython or `github-action-utils`.
 
 Install the required interpreters with `uv python install 3.12 3.13 3.14 3.15`. Tests use controlled HTTP responses and temporary Git repositories without contacting GitHub.
 

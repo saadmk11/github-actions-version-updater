@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import runpy
 from collections.abc import Sequence
+from importlib.machinery import ModuleSpec
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import github_action_utils as gha
 import pytest
 from pydantic import SecretStr
 from rich.text import Text
@@ -45,6 +45,9 @@ _RUN_UPDATE = "update_gha.cli.main.run_update"
     "current_ref", ["v1.0.0", "v2.0.0", "a" * 40, "b" * 40, "maintenance"]
 )
 @pytest.mark.parametrize(
+    "github_actions", [False, pytest.param(True, marks=requires_action)]
+)
+@pytest.mark.parametrize(
     ("mode", "expected_pin"),
     [
         (UpdateVersionWith.LATEST_RELEASE_TAG, "v2.0.0"),
@@ -54,6 +57,7 @@ _RUN_UPDATE = "update_gha.cli.main.run_update"
 )
 def test_cli_converts_reference_formats_using_real_lookup(
     current_ref: str,
+    github_actions: bool,
     mode: UpdateVersionWith,
     expected_pin: str,
     tmp_path: Path,
@@ -103,7 +107,8 @@ def test_cli_converts_reference_formats_using_real_lookup(
 
     monkeypatch.setattr("update_gha.scan.GitHubClient", create_client)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    if github_actions:
+        monkeypatch.setenv("GITHUB_ACTIONS", "true")
     workflow = tmp_path / ".github" / "workflows" / "ci.yml"
     workflow.parent.mkdir(parents=True)
     workflow.write_text(f"- uses: actions/checkout@{current_ref}\n")
@@ -112,7 +117,7 @@ def test_cli_converts_reference_formats_using_real_lookup(
     )
     assert result.exit_code == 0, result.output
     assert workflow.read_text() == f"- uses: actions/checkout@{expected_pin}\n"
-    assert "::warning" not in result.output
+    assert "does not follow Semantic Versioning" not in result.output
 
 
 @pytest.mark.parametrize("option", ["--update-version-with", "--format"])
@@ -133,9 +138,12 @@ def test_invalid_enum_inputs_cannot_echo_credentials(
     assert secret not in result.output
 
 
+@requires_action
 def test_json_output_stays_parseable_with_subprocess_logging_enabled(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    import github_action_utils as gha
+
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setattr(gha, "COMMANDS_USE_SUBPROCESS", True)
@@ -356,6 +364,41 @@ def test_pull_request_requires_extra(monkeypatch: pytest.MonkeyPatch) -> None:
     assert called == []
 
 
+@pytest.mark.parametrize(
+    ("available", "expected"),
+    [
+        ((), False),
+        (("git",), False),
+        (("github_action_utils",), False),
+        (("git", "github_action_utils"), True),
+    ],
+)
+def test_action_extra_requires_both_dependencies(
+    available: tuple[str, ...], expected: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "update_gha.action.importlib.util.find_spec",
+        lambda name: ModuleSpec(name, loader=None) if name in available else None,
+    )
+    assert has_action_extra() is expected
+
+
+def test_github_actions_requires_extra_before_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[bool] = []
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GHA_UPDATE_TOKEN", "fixture-sensitive-token")
+    monkeypatch.setattr("update_gha.cli.main.has_action_extra", lambda: False)
+    monkeypatch.setattr(_RUN_UPDATE, lambda *_args, **_kwargs: calls.append(True))
+    result = runner.invoke(app, ["--dry-run", "--format", "json"])
+    assert result.exit_code == 2
+    assert "Install the action extra" in result.stderr
+    assert "fixture-sensitive-token" not in result.output
+    assert result.stdout == ""
+    assert calls == []
+
+
 @requires_action
 def test_pull_request_requires_github_values_before_updating(
     monkeypatch: pytest.MonkeyPatch,
@@ -536,6 +579,7 @@ def test_check_from_environment_exits_one(
     assert result.exit_code == 1
 
 
+@requires_action
 def test_json_stdout_is_clean_on_github_actions(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -656,7 +700,9 @@ def test_diff_prints_changed_files(
     assert "same.yml" not in result.stdout
 
 
-@pytest.mark.parametrize("github_actions", [False, True])
+@pytest.mark.parametrize(
+    "github_actions", [False, pytest.param(True, marks=requires_action)]
+)
 @pytest.mark.parametrize("output", ["text", "diff", "json"])
 @pytest.mark.parametrize(
     ("location", "filename"),
@@ -795,6 +841,7 @@ def test_token_like_examples_are_not_rejected_as_credentials(
 @pytest.mark.parametrize("github_actions", [False, True])
 @pytest.mark.parametrize("token_source", ["argument", "environment"])
 @pytest.mark.parametrize("output", ["text", "json"])
+@requires_action
 def test_cli_keeps_token_wrapped_and_masks_before_scanning(
     github_actions: bool,
     token_source: str,
@@ -802,6 +849,8 @@ def test_cli_keeps_token_wrapped_and_masks_before_scanning(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import github_action_utils as gha
+
     secret = "fixture-sensitive-token"
     masks: list[str] = []
     monkeypatch.setattr(gha, "add_mask", masks.append)

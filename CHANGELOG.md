@@ -5,7 +5,7 @@
 * Remove incorrect SemVer warnings for SHA and branch pins, and report absent updates without warnings.
 * Exclude unchanged and unrewritable pins from update counts and pull-request descriptions.
 * Keep tokens wrapped in `SecretStr`, register runner masks through `github-action-utils`, and omit raw API responses and Git diagnostics from failure messages. Handle malformed token headers through normal API error reporting.
-* Use `github-action-utils` for workflow logging, groups, masks, summaries, and outputs.
+* Use `github-action-utils` from the `[action]` extra for workflow logging, groups, masks, summaries, and outputs.
 * Add function docstrings and regression coverage for reference selection and credential handling.
 * Update locked cachetools, coverage, Ruff, and virtualenv dependencies.
 

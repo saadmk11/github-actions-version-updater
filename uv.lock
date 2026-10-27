@@ -981,7 +981,6 @@ name = "update-gha"
 version = "1.0.3"
 source = { editable = "." }
 dependencies = [
-    { name = "github-action-utils" },
     { name = "httpx2" },
     { name = "packaging" },
     { name = "pydantic" },
@@ -992,6 +991,7 @@ dependencies = [
 
 [package.optional-dependencies]
 action = [
+    { name = "github-action-utils" },
     { name = "gitpython" },
 ]
 
@@ -1023,7 +1023,7 @@ typing = [
 
 [package.metadata]
 requires-dist = [
-    { name = "github-action-utils", specifier = ">=2.0.0,<3" },
+    { name = "github-action-utils", marker = "extra == 'action'", specifier = ">=2.0.0,<3" },
     { name = "gitpython", marker = "extra == 'action'", specifier = ">=3.2.1" },
     { name = "httpx2", specifier = ">=2.12.0,<3" },
     { name = "packaging", specifier = ">=23.2" },

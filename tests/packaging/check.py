@@ -190,13 +190,18 @@ def check(directory: Path) -> None:
                         | {"GITHUB_ACTIONS": "true", "COMMANDS_USE_SUBPROCESS": "1"},
                         capture_output=True,
                         text=True,
-                        check=True,
                     )
-                    assert TypeAdapter(JsonValue).validate_json(result.stdout) == {
-                        "files": [],
-                        "wrote": False,
-                    }
-                    assert "No workflow files found" in result.stderr
+                    if extra:
+                        assert result.returncode == 0, result.stderr
+                        assert TypeAdapter(JsonValue).validate_json(result.stdout) == {
+                            "files": [],
+                            "wrote": False,
+                        }
+                        assert "No workflow files found" in result.stderr
+                    else:
+                        assert result.returncode == 2, result.stderr
+                        assert "Install the action extra" in result.stderr
+                        assert "ModuleNotFoundError" not in result.stderr
                 subprocess.run(
                     [
                         str(python),

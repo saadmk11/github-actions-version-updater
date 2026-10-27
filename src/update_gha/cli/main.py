@@ -43,7 +43,7 @@ from update_gha.log import (
     configure_logging,
     echo_report,
     get_reporter,
-    mask_secret,
+    running_on_github_actions,
 )
 from update_gha.models import OutputFormat
 from update_gha.scan import render_diff, run_update
@@ -162,7 +162,12 @@ def main(
             "Invalid configuration; check option values and project settings."
         ) from None
 
-    mask_secret(config.token)
+    if running_on_github_actions():
+        if not has_action_extra():
+            raise typer.BadParameter(EXTRA_HINT)
+        from update_gha.action.log import mask_secret
+
+        mask_secret(config.token)
 
     if fail_on_update and config.create_pull_request:
         raise typer.BadParameter(
