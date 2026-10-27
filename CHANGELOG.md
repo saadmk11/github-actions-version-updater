@@ -1,5 +1,10 @@
 # Version: v1.0.3
 
+* [#131](https://github.com/saadmk11/github-actions-version-updater/pull/131): [pre-commit.ci] pre-commit autoupdate
+
+
+# Version: v1.0.3
+
 * Apply release-type filters consistently across tags, branches, and commit SHAs. Resolve moving tags through their commits using full release versions, and accept full version tags without a GitHub Release entry.
 * Allow switching between a release tag and its commit SHA when the release is already current.
 * Remove incorrect SemVer warnings for SHA and branch pins, and report absent updates without warnings.
