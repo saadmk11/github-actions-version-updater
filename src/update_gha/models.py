@@ -46,6 +46,7 @@ class ReleaseInfo(BaseModel):
 
     @field_serializer("tag_version")
     def _serialize_tag_version(self, value: Version | None) -> str | None:
+        """Serialize a parsed version as a string while preserving None."""
         return None if value is None else str(value)
 
 
@@ -265,11 +266,3 @@ class GitHubRepoPayload(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     default_branch: str
-
-
-class GitHubMessagePayload(BaseModel):
-    """GitHub error message included in diagnostics."""
-
-    model_config = ConfigDict(frozen=True, extra="ignore")
-
-    message: str = ""

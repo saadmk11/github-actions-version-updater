@@ -13,6 +13,25 @@ _UPDATE = "Update"
 _OUTPUT = "Output"
 _PULL = "Pull request"
 
+
+def _parse_update_source(value: str) -> str:
+    """Validate the update source without reflecting a potentially secret value."""
+    try:
+        return UpdateVersionWith(value).value
+    except ValueError:
+        raise typer.BadParameter(
+            "Choose release-tag, release-commit-sha, or default-branch-sha."
+        ) from None
+
+
+def _parse_output_format(value: str) -> str:
+    """Validate the report format without reflecting a potentially secret value."""
+    try:
+        return OutputFormat(value).value
+    except ValueError:
+        raise typer.BadParameter("Choose text or json.") from None
+
+
 TokenOption = Annotated[
     str | None,
     typer.Option(
@@ -58,6 +77,7 @@ UpdateWithOption = Annotated[
     UpdateVersionWith | None,
     typer.Option(
         "--update-version-with",
+        parser=_parse_update_source,
         help=(
             "What replaces each pin. release-tag (default) writes the latest "
             "stable tag; release-commit-sha writes that tag's commit and a "
@@ -76,8 +96,8 @@ ReleaseTypesOption = Annotated[
         help=(
             "Restrict release-tag / release-commit-sha updates to these SemVer "
             "bumps of the current pin: major, minor, patch, or all (default). "
-            "No effect with default-branch-sha. A non-semver pin is skipped "
-            "when this is not all."
+            "No effect with default-branch-sha. Restricted filters require "
+            "a full version or a ref matching a semantic release."
         ),
         metavar="TYPES",
         rich_help_panel=_UPDATE,
@@ -152,6 +172,8 @@ FormatOption = Annotated[
     OutputFormat | None,
     typer.Option(
         "--format",
+        parser=_parse_output_format,
+        metavar="[text|json]",
         help=(
             "Summary on stdout: text (default) or json. json sends progress "
             "logs to stderr so stdout stays parseable."

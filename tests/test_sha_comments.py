@@ -99,18 +99,27 @@ def test_existing_tag_comment_is_normalized() -> None:
 
 
 @pytest.mark.parametrize(
-    "text",
+    ("text", "expected"),
     [
-        "steps: [{uses: actions/checkout@v3}]\n",
-        "steps:\n  - uses: >-\n      actions/checkout@v3\n",
-        'steps:\n  - uses: "actions/checkout@\\\nv3"\n',
+        (
+            "steps: [{uses: actions/checkout@v3}]\n",
+            f"steps: [{{uses: actions/checkout@{CHECKOUT_SHA}}}]\n",
+        ),
+        (
+            "steps:\n  - uses: >-\n      actions/checkout@v3\n",
+            f"steps:\n  - uses: >-\n      actions/checkout@{CHECKOUT_SHA}\n",
+        ),
+        (
+            'steps:\n  - uses: "actions/checkout@\\\nv3"\n',
+            'steps:\n  - uses: "actions/checkout@\\\nv3"\n',
+        ),
     ],
 )
-def test_flow_and_block_scalars_are_not_annotated(text: str) -> None:
+def test_flow_and_block_scalars_are_not_annotated(text: str, expected: str) -> None:
     updated = apply_version_updates(
         text, {"actions/checkout@v3": PinRewrite(CHECKOUT_SHA, "v4.2.2")}
     )
-    assert "  # v4.2.2" not in updated
+    assert updated == expected
 
 
 def test_crlf_and_missing_newline() -> None:

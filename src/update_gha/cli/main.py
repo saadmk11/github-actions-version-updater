@@ -36,19 +36,21 @@ from update_gha.cli.options import (
     UserReviewersOption,
     VerboseOption,
 )
-from update_gha.config import configuration_from_cli, split_csv
+from update_gha.config import Configuration, configuration_from_cli, split_csv
 from update_gha.github import GitHubAPIError
 from update_gha.log import (
     Verbosity,
     configure_logging,
     echo_report,
     get_reporter,
+    running_on_github_actions,
 )
 from update_gha.models import OutputFormat
 from update_gha.scan import render_diff, run_update
 
 
 def _version_callback(value: bool) -> None:
+    """Print the package version and exit when the version flag is set."""
     if value:
         echo_report(__version__)
         raise typer.Exit(0)
@@ -63,6 +65,7 @@ app = typer.Typer(
     ),
     add_completion=False,
     no_args_is_help=False,
+    pretty_exceptions_enable=False,
 )
 
 
@@ -144,8 +147,27 @@ def main(
             team_reviewers=team_reviewers,
             labels=labels,
         )
-    except (SettingsError, ValidationError, ValueError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
+    except ValidationError as exc:
+        fields = sorted(
+            {
+                str(error["loc"][0])
+                for error in exc.errors(include_input=False, include_context=False)
+                if error["loc"] and error["loc"][0] in Configuration.model_fields
+            }
+        )
+        detail = ", ".join(fields) or "unknown settings"
+        raise typer.BadParameter(f"Invalid configuration: {detail}.") from None
+    except (SettingsError, ValueError):
+        raise typer.BadParameter(
+            "Invalid configuration; check option values and project settings."
+        ) from None
+
+    if running_on_github_actions():
+        if not has_action_extra():
+            raise typer.BadParameter(EXTRA_HINT)
+        from update_gha.action.log import mask_secret
+
+        mask_secret(config.token)
 
     if fail_on_update and config.create_pull_request:
         raise typer.BadParameter(
@@ -180,7 +202,7 @@ def main(
         report = run_update(config, reporter=reporter)
     except (GitHubAPIError, OSError) as exc:
         reporter.error(str(exc))
-        raise typer.Exit(1) from exc
+        raise typer.Exit(1) from None
 
     if config.output_format is OutputFormat.JSON:
         echo_report(report.model_dump_json(indent=2), json_output=True)
@@ -220,7 +242,7 @@ def main(
             )
         except (GitHubAPIError, OSError, ValidationError, ValueError) as exc:
             reporter.error(str(exc))
-            raise typer.Exit(1) from exc
+            raise typer.Exit(1) from None
         raise typer.Exit(result)
 
     raise typer.Exit(0)

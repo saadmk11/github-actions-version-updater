@@ -120,6 +120,7 @@ def apply_version_updates(
 
 
 def _as_pin_rewrite(spec: PinRewriteSpec) -> PinRewrite:
+    """Normalize a version string or an existing rewrite into a PinRewrite."""
     if isinstance(spec, PinRewrite):
         return spec
     return PinRewrite(version=spec)
@@ -166,6 +167,7 @@ def _apply_release_tag_comment(
 
 
 def _is_version_comment(body: str) -> bool:
+    """Return whether the comment consists of a valid PEP 440 version."""
     if not body:
         return False
     try:
@@ -181,6 +183,7 @@ def parse_uses_spans(text: str) -> tuple[UsesSpan, ...] | None:
     seen: set[int] = set()
 
     def visit(node: Node) -> None:
+        """Collect string-valued uses spans while visiting each YAML node once."""
         identity = id(node)
         if identity in seen:
             return

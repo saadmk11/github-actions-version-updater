@@ -118,7 +118,7 @@ def check(directory: Path) -> None:
         if not key.startswith(
             ("GITHUB_", "GHA_UPDATE_", "INPUT_", "PYTHON", "UV_", "PIP_")
         )
-        and key not in {"VIRTUAL_ENV", "CONDA_PREFIX"}
+        and key not in {"VIRTUAL_ENV", "CONDA_PREFIX", "GH_TOKEN"}
     }
     # Carry only the cache location into installation commands, never user indexes.
     install_env = clean_env | {
@@ -190,13 +190,18 @@ def check(directory: Path) -> None:
                         | {"GITHUB_ACTIONS": "true", "COMMANDS_USE_SUBPROCESS": "1"},
                         capture_output=True,
                         text=True,
-                        check=True,
                     )
-                    assert TypeAdapter(JsonValue).validate_json(result.stdout) == {
-                        "files": [],
-                        "wrote": False,
-                    }
-                    assert "No workflow files found" in result.stderr
+                    if extra:
+                        assert result.returncode == 0, result.stderr
+                        assert TypeAdapter(JsonValue).validate_json(result.stdout) == {
+                            "files": [],
+                            "wrote": False,
+                        }
+                        assert "No workflow files found" in result.stderr
+                    else:
+                        assert result.returncode == 2, result.stderr
+                        assert "Install the action extra" in result.stderr
+                        assert "ModuleNotFoundError" not in result.stderr
                 subprocess.run(
                     [
                         str(python),

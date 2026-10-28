@@ -55,8 +55,7 @@ def run_update(
     if client is not None:
         github: VersionLookup = client
     else:
-        token = config.token.get_secret_value() if config.token else None
-        owned_client = GitHubClient(token, active_reporter, session=session)
+        owned_client = GitHubClient(config.token, active_reporter, session=session)
         github = owned_client
     root = workspace if workspace is not None else Path.cwd()
     try:
@@ -72,6 +71,7 @@ def _run_update(
     github: VersionLookup,
     root: Path,
 ) -> UpdateReport:
+    """Discover workflows, resolve updates, write permitted changes, and report."""
     extra_files = collect_extra_files(
         config.extra_workflow_locations, active_reporter, workspace=root
     )
@@ -145,6 +145,11 @@ def _update_one_file(
     reporter: Reporter,
     resolved_cache: dict[tuple[str, str], ResolvedVersion | None],
 ) -> FileUpdate | None:
+    """Build a validated workflow rewrite without writing it to disk.
+
+    Report unreadable or invalid files and return None so other files can still
+    be processed.
+    """
     try:
         original = _read_text_preserving_newlines(workflow_path)
     except OSError as exc:
@@ -183,21 +188,23 @@ def _update_one_file(
         )
         if resolved is None:
             continue
-
         updated_action = f"{action_location}@{resolved.version}"
         comment = _release_tag_comment(config.update_version_with, resolved)
         version_changed = action != updated_action
-        if not version_changed and comment is None:
-            reporter.info(f'No updates found for "{action_repository}"')
+        rewrite = PinRewrite(version=resolved.version, comment=comment)
+        if apply_version_updates(original, {action: rewrite}, spans=spans) == original:
+            if version_changed:
+                reporter.error(
+                    f'Could not rewrite "{action}" in "{workflow_path}". Skipping.'
+                )
+            else:
+                reporter.info(f'No updates found for "{action_repository}"')
             continue
 
         if version_changed:
             reporter.info(f'Found new version for "{action_repository}"')
             reporter.info(f'Updating "{action}" with "{updated_action}"...')
-        updates[action] = PinRewrite(
-            version=resolved.version,
-            comment=comment,
-        )
+        updates[action] = rewrite
         action_updates.append(
             ActionUpdate(
                 repository=action_repository,
@@ -218,23 +225,19 @@ def _update_one_file(
         )
 
     updated_text = apply_version_updates(original, updates, spans=spans)
-    found_after = parse_uses_spans(updated_text)
-    if found_after is None:
+    if parse_uses_spans(updated_text) is None:
         reporter.error(
             f'Updating version tokens produced invalid YAML in "{workflow_path}". '
             "Skipping this file."
         )
         return None
 
-    applied = _applied_updates(
-        actions_from_spans(found_after), action_updates, reporter, workflow_path
-    )
-    changed = updated_text != original and bool(applied)
+    changed = updated_text != original
     return FileUpdate(
         path=workflow_path,
         original=original,
-        updated=updated_text if changed else original,
-        actions=applied if changed else (),
+        updated=updated_text,
+        actions=tuple(action_updates) if changed else (),
     )
 
 
@@ -249,6 +252,7 @@ def _resolve_cached(
     update_with: UpdateVersionWith,
     release_types: frozenset[ReleaseType],
 ) -> ResolvedVersion | None:
+    """Cache resolutions, distinguishing lookup errors from absent updates."""
     cache_key = (action_repository, current_version)
     if cache_key in resolved_cache:
         return resolved_cache[cache_key]
@@ -266,30 +270,9 @@ def _resolve_cached(
         resolved = None
     else:
         if resolved is None:
-            reporter.warning(
-                f"Could not find any new version for {action}. Skipping..."
-            )
+            reporter.info(f"No update selected for {action}.")
     resolved_cache[cache_key] = resolved
     return resolved
-
-
-def _applied_updates(
-    found_after: frozenset[str],
-    action_updates: list[ActionUpdate],
-    reporter: Reporter,
-    workflow_path: Path,
-) -> tuple[ActionUpdate, ...]:
-    applied: list[ActionUpdate] = []
-    for item in action_updates:
-        new_ref = f"{item.location}@{item.new_version}"
-        if new_ref in found_after:
-            applied.append(item)
-            continue
-        reporter.error(
-            f'Could not rewrite "{item.location}@{item.old_version}" in '
-            f'"{workflow_path}". Skipping.'
-        )
-    return tuple(applied)
 
 
 def _release_tag_comment(
@@ -311,6 +294,7 @@ def _release_tag_comment(
 
 
 def _split_action(action: str) -> tuple[str, str] | None:
+    """Split remote action pins into location and version, or return None."""
     match action:
         case s if s.startswith(("./", "docker://")):
             return None

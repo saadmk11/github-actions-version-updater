@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+import traceback
 from collections.abc import Callable
 
 import httpx2
 import pytest
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 from tests.action.conftest import make_config
 from tests.conftest import RecordingReporter, silent_reporter
 
@@ -17,6 +18,55 @@ from update_gha.github import GitHubAPIError
 type RequestFn = Callable[
     [str, str, dict[str, str], bytes | None, float], tuple[int, str]
 ]
+
+
+@pytest.mark.parametrize(
+    ("proxy", "error_type"),
+    [
+        ("socks6://private-user:private-password@proxy.invalid", "ValueError"),
+        ("https://private-user:private-password@proxy.invalid:bad", "InvalidURL"),
+    ],
+)
+def test_pull_request_proxy_errors_do_not_expose_credentials(
+    monkeypatch: pytest.MonkeyPatch, proxy: str, error_type: str
+) -> None:
+    for variable in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"):
+        monkeypatch.delenv(variable, raising=False)
+        monkeypatch.delenv(variable.lower(), raising=False)
+    monkeypatch.setenv("HTTPS_PROXY", proxy)
+    with pytest.raises(GitHubAPIError) as error:
+        pulls.create_pull_request(
+            make_config(), RecordingReporter(), head="updates", base="main", body="body"
+        )
+    assert str(error.value) == f"Could not reach GitHub ({error_type})."
+    rendered = "".join(traceback.format_exception(error.value))
+    assert "private-user" not in rendered
+    assert "private-password" not in rendered
+
+
+@pytest.mark.parametrize("operation", ["pull_request", "reviewers", "labels"])
+def test_api_failures_cannot_log_the_token(
+    monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    secret = "fixture-sensitive-token-" + "x" * 200
+    reporter = RecordingReporter()
+    monkeypatch.setattr(pulls, "request", _stub_request(502, f"upstream: {secret}"))
+    config = make_config(token=secret)
+    match operation:
+        case "pull_request":
+            with pytest.raises(SystemExit):
+                pulls.create_pull_request(
+                    config, reporter, head="updates", base="main", body="body"
+                )
+        case "reviewers":
+            pulls.add_reviewers(
+                config, reporter, pull_request_number=1, users=("ada",), teams=()
+            )
+        case "labels":
+            pulls.add_labels(config, reporter, pull_request_number=1, labels=("bug",))
+    assert reporter.errors
+    assert "HTTP 502: request failed" in reporter.errors[0]
+    assert secret[:100] not in reporter.errors[0]
 
 
 def _stub_request(status: int, payload: str = "{}") -> RequestFn:
@@ -48,6 +98,25 @@ def test_create_pull_request_success(monkeypatch: pytest.MonkeyPatch) -> None:
         body="body",
     )
     assert number == 42
+
+
+def test_invalid_created_pull_request_response_hides_input_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = "response-sensitive-value"
+    monkeypatch.setattr(
+        pulls,
+        "request",
+        _stub_request(
+            201, json.dumps({"number": secret, "html_url": "https://example.com/pr"})
+        ),
+    )
+    with pytest.raises(ValidationError) as caught:
+        pulls.create_pull_request(
+            make_config(), silent_reporter(), head="updates", base="main", body="body"
+        )
+    assert "number" in str(caught.value)
+    assert secret not in "".join(traceback.format_exception(caught.value))
 
 
 def test_create_pull_request_already_exists(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -136,7 +205,8 @@ def test_add_reviewers_reports_failure(monkeypatch: pytest.MonkeyPatch) -> None:
         teams=("b",),
     )
     assert reporter.errors
-    assert "nope" in reporter.errors[0]
+    assert "HTTP 400: request failed" in reporter.errors[0]
+    assert "nope" not in reporter.errors[0]
 
 
 @pytest.mark.parametrize(
@@ -219,7 +289,8 @@ def test_add_labels_reports_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pulls, "request", _stub_request(400, '{"message": "nope"}'))
     pulls.add_labels(make_config(), reporter, pull_request_number=1, labels=("bug",))
     assert reporter.errors
-    assert "nope" in reporter.errors[0]
+    assert "HTTP 400: request failed" in reporter.errors[0]
+    assert "nope" not in reporter.errors[0]
 
 
 @pytest.mark.parametrize("token", [None, ""])
@@ -366,3 +437,43 @@ def test_transport_failure_has_safe_diagnostic(
     with pytest.raises(GitHubAPIError) as caught:
         pulls.request("POST", "https://api.github.com/repos/o/r/pulls", {}, b"{}")
     assert str(caught.value) == f"Could not reach GitHub ({error.__name__})."
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        {
+            "title": "fixture-sensitive-token",
+            "labels": ["safe", "fixture-sensitive-token"],
+        },
+    ],
+)
+def test_api_request_preserves_payload_and_authentication(
+    payload: dict[str, str | list[str]] | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: list[bytes | None] = []
+
+    def request(
+        method: str,
+        url: str,
+        headers: dict[str, str],
+        body: bytes | None,
+        timeout: float = 30,
+    ) -> tuple[int, str]:
+        assert headers["Authorization"] == "Bearer fixture-sensitive-token"
+        captured.append(body)
+        return 201, "{}"
+
+    monkeypatch.setattr(pulls, "request", request)
+    pulls.api_request(
+        "POST",
+        "https://api.github.com/repos/o/r/pulls",
+        make_config(token="fixture-sensitive-token"),
+        payload,
+    )
+    assert len(captured) == 1
+    if payload is None:
+        assert captured == [None]
+    else:
+        assert json.loads(captured[0] or b"{}") == payload

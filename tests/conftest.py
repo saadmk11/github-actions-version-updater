@@ -32,6 +32,8 @@ def _isolate_github_env(monkeypatch: pytest.MonkeyPatch) -> None:
         if name.startswith(("GITHUB_", "GHA_UPDATE_")) or name in {
             "FORCE_COLOR",
             "CLICOLOR_FORCE",
+            "GH_TOKEN",
+            "INPUT_TOKEN",
         }:
             monkeypatch.delenv(name)
     monkeypatch.setenv("NO_COLOR", "1")

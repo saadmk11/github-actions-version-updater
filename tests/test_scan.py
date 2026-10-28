@@ -6,8 +6,10 @@ import os
 from pathlib import Path
 
 import pytest
+from pydantic import SecretStr
 
 from tests.conftest import (
+    FakeResponse,
     FakeSession,
     RecordingReporter,
     silent_reporter,
@@ -95,7 +97,16 @@ def _checkout_sha(tag: str = "v4.2.2") -> ResolvedVersion:
     )
 
 
-def test_writes_only_changed_files(tmp_path: Path) -> None:
+def test_writes_only_changed_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    written: list[Path] = []
+
+    def write(path: Path, text: str) -> None:
+        written.append(path)
+        _write_text_preserving_newlines(path, text)
+
+    monkeypatch.setattr("update_gha.scan._write_text_preserving_newlines", write)
     workflow = write_workflow(tmp_path, "ci.yml", CHECKOUT_V3)
     other = write_workflow(
         tmp_path,
@@ -111,6 +122,8 @@ def test_writes_only_changed_files(tmp_path: Path) -> None:
     assert "actions/checkout@v4" in workflow.read_text(encoding="utf-8")
     assert other.read_text(encoding="utf-8").count("actions/checkout@v4") == 1
     assert [item.path.name for item in report.files if item.changed] == ["ci.yml"]
+    assert written == [workflow]
+    assert report.wrote is True
 
 
 def test_preserves_crlf_through_real_io(tmp_path: Path) -> None:
@@ -131,15 +144,23 @@ def test_preserves_crlf_through_real_io(tmp_path: Path) -> None:
     assert result.count("\r\n") == original.count("\r\n")
 
 
-def test_dry_run_does_not_write(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "settings", [{"write": False}, {"dry_run": True}, {"check": True}]
+)
+def test_no_write_modes_preserve_files(
+    tmp_path: Path, settings: dict[str, bool]
+) -> None:
     workflow = write_workflow(tmp_path, "ci.yml", CHECKOUT_V3)
-    run_update(
-        Configuration(write=False, dry_run=True),
+    report = run_update(
+        Configuration.model_validate(settings),
         reporter=silent_reporter(),
         client=FakeLookup({("actions/checkout", "v3"): _checkout_v4()}),
         workspace=tmp_path,
     )
     assert workflow.read_text(encoding="utf-8") == CHECKOUT_V3
+    assert report.has_updates is True
+    assert report.wrote is False
+    assert report.files[0].updated == CHECKOUT_V3.replace("@v3", "@v4")
 
 
 def test_empty_workspace_returns_empty_report(tmp_path: Path) -> None:
@@ -166,7 +187,12 @@ def test_skips_local_and_ignored_actions(tmp_path: Path) -> None:
     report = run_update(
         Configuration(write=True, ignore_actions=frozenset({"actions/cache@v3"})),
         reporter=silent_reporter(),
-        client=FakeLookup({("actions/checkout", "v3"): _checkout_v4()}),
+        client=FakeLookup(
+            {
+                ("actions/checkout", "v3"): _checkout_v4(),
+                ("actions/cache", "v3"): _checkout_v4(),
+            }
+        ),
         workspace=tmp_path,
     )
     updated = workflow.read_text(encoding="utf-8")
@@ -205,7 +231,15 @@ def test_unresolved_and_current_actions_leave_files_unchanged(tmp_path: Path) ->
 
 @pytest.mark.parametrize(
     "value",
-    ["docker://alpine", "nope", "@", "owner@v1", "owner//@v1", "owner/repo@"],
+    [
+        "docker://alpine",
+        "./local/action@v1",
+        "nope",
+        "@",
+        "owner@v1",
+        "owner//@v1",
+        "owner/repo@",
+    ],
 )
 def test_split_action_rejects_unsupported_refs(value: str) -> None:
     assert _split_action(value) is None
@@ -248,6 +282,7 @@ def test_write_preserves_mode_and_cleans_up_failed_replace(
     monkeypatch.setattr("update_gha.scan.os.replace", fail)
     with pytest.raises(OSError, match="nope"):
         _write_text_preserving_newlines(target, "x")
+    assert target.read_text(encoding="utf-8") == "new\n"
     assert list(tmp_path.glob(".w.yml.*.tmp")) == []
 
 
@@ -344,6 +379,34 @@ def test_invalid_rewrite_skips_that_file_only(
     assert report.has_updates is True
 
 
+def test_existing_target_pin_does_not_hide_an_unrewritable_pin(tmp_path: Path) -> None:
+    original = (
+        '- uses: "actions/checkout@\\\nv3"\n'
+        "- uses: actions/checkout@v4\n"
+        "- uses: actions/setup-python@v3\n"
+    )
+    workflow = write_workflow(tmp_path, "ci.yml", original)
+    reporter = RecordingReporter()
+    report = run_update(
+        Configuration(),
+        reporter=reporter,
+        client=FakeLookup(
+            {
+                ("actions/checkout", "v3"): _checkout_v4(),
+                ("actions/setup-python", "v3"): ResolvedVersion(version="v4"),
+            }
+        ),
+        workspace=tmp_path,
+    )
+    assert workflow.read_text() == original.replace(
+        "setup-python@v3", "setup-python@v4"
+    )
+    assert [item.repository for item in report.action_updates] == [
+        "actions/setup-python"
+    ]
+    assert any("Could not rewrite" in message for message in reporter.errors)
+
+
 def test_run_update_creates_and_closes_owned_client(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -352,11 +415,11 @@ def test_run_update_creates_and_closes_owned_client(
     class Tracking(GitHubClient):
         def __init__(
             self,
-            token: str | None,
+            token: SecretStr | None,
             reporter: Reporter,
             session: HttpSession | None = None,
         ) -> None:
-            super().__init__("t", silent_reporter(), session=FakeSession({}))
+            super().__init__(SecretStr("t"), silent_reporter(), session=FakeSession({}))
             closed.append(False)
 
         def close(self) -> None:
@@ -628,6 +691,55 @@ def test_current_sha_without_comment_gets_tag_comment(tmp_path: Path) -> None:
     assert report.has_updates is True
 
 
+@pytest.mark.parametrize("comment", ["  # v4.2.2", "  # pin for security"])
+def test_unchanged_sha_is_not_reported_when_another_pin_changes(
+    tmp_path: Path, comment: str
+) -> None:
+    workflow = write_workflow(
+        tmp_path,
+        "ci.yml",
+        f"- uses: actions/checkout@{CHECKOUT_SHA}{comment}\n- uses: other/action@v1\n",
+    )
+    reporter = RecordingReporter()
+    report = run_update(
+        Configuration(update_version_with=UpdateVersionWith.LATEST_RELEASE_COMMIT_SHA),
+        reporter=reporter,
+        client=FakeLookup(
+            {
+                ("actions/checkout", CHECKOUT_SHA): _checkout_sha(),
+                ("other/action", "v1"): _checkout_sha(),
+            }
+        ),
+        workspace=tmp_path,
+    )
+    assert workflow.read_text() == (
+        f"- uses: actions/checkout@{CHECKOUT_SHA}{comment}\n"
+        f"- uses: other/action@{CHECKOUT_SHA}  # v4.2.2\n"
+    )
+    assert [update.repository for update in report.action_updates] == ["other/action"]
+    assert "Updated 1 actions in 1 files." in report.text_summary()
+    assert "* **[actions/checkout]" not in report.pull_request_body()
+
+
+def test_example_tokens_do_not_prevent_workflow_updates(
+    tmp_path: Path,
+) -> None:
+    example = "ghp_" + "A" * 40
+    original = f"# Example: {example}\n{CHECKOUT_V3}"
+    workflow = write_workflow(tmp_path, "ci.yml", original)
+    reporter = RecordingReporter()
+    report = run_update(
+        Configuration(show_diff=True),
+        reporter=reporter,
+        client=FakeLookup({("actions/checkout", "v3"): _checkout_v4()}),
+        workspace=tmp_path,
+    )
+    assert report.has_updates is True
+    assert report.wrote is True
+    assert workflow.read_text() == original.replace("checkout@v3", "checkout@v4")
+    assert reporter.errors == []
+
+
 def test_release_tag_comment_helper() -> None:
     sha = _checkout_sha()
     assert (
@@ -664,3 +776,21 @@ def test_release_tag_comment_helper() -> None:
         )
         is None
     )
+
+
+def test_scanner_omits_api_response_body(tmp_path: Path) -> None:
+    secret = "fixture-sensitive-token"
+    write_workflow(tmp_path, "ci.yml", CHECKOUT_V3)
+    reporter = RecordingReporter()
+    url = "https://api.github.com/repos/actions/checkout/releases?per_page=100"
+    report = run_update(
+        Configuration.model_validate({"token": secret}),
+        reporter=reporter,
+        session=FakeSession(
+            {url: FakeResponse(401, {"message": "response-sensitive-value"})}
+        ),
+        workspace=tmp_path,
+    )
+    assert report.has_updates is False
+    assert "HTTP 401: authentication failed" in reporter.errors[0]
+    assert "response-sensitive-value" not in "".join(reporter.errors)

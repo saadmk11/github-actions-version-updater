@@ -1,4 +1,4 @@
-"""CLI and GitHub Actions log reporters."""
+"""Shared reporting interfaces, local logging, and reporter selection."""
 
 import logging
 import os
@@ -6,10 +6,8 @@ import sys
 from collections.abc import Generator
 from contextlib import AbstractContextManager, contextmanager
 from enum import IntEnum
-from io import TextIOWrapper
-from typing import Protocol, TextIO, override
+from typing import Protocol, TextIO
 
-import github_action_utils as gha
 import typer
 
 LOGGER_NAME = "update_gha"
@@ -52,8 +50,8 @@ class Reporter(Protocol):
 
 
 def running_on_github_actions() -> bool:
-    """Return whether GitHub Actions reporting is enabled."""
-    return gha.is_github_action()
+    """Return whether the process is running on GitHub Actions."""
+    return os.environ.get("GITHUB_ACTIONS") == "true"
 
 
 def echo_report(message: str, *, json_output: bool = False, nl: bool = True) -> None:
@@ -84,6 +82,8 @@ def configure_logging(
     logger.setLevel(levels[verbosity])
 
     if running_on_github_actions():
+        from update_gha.action.log import GitHubActionsHandler
+
         handler: logging.Handler = GitHubActionsHandler(stream=stream)
         handler.setFormatter(logging.Formatter("%(message)s"))
     else:
@@ -102,6 +102,8 @@ def get_reporter(
     """Return a reporter for the current runtime and selected output stream."""
     resolved = logger if logger is not None else logging.getLogger(LOGGER_NAME)
     if running_on_github_actions():
+        from update_gha.action.log import GitHubActionsReporter
+
         return GitHubActionsReporter(resolved, stream=stream)
     return CliReporter(resolved)
 
@@ -110,6 +112,7 @@ class CliReporter:
     """Plain ``LEVEL: message`` reporter for local CLI use."""
 
     def __init__(self, logger: logging.Logger) -> None:
+        """Bind CLI progress and summary reporting to the supplied logger."""
         self._logger = logger
 
     def info(self, message: str) -> None:
@@ -139,94 +142,9 @@ class CliReporter:
         yield
 
 
-def _escape_workflow_message(message: str) -> str:
-    return message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-
-
 def _escape_workflow_text(message: str) -> str:
     """Prevent plain text from triggering modern or legacy runner commands."""
     # ANSI stripping must not join separated command markers.
     return (
         message.replace("\x1b", "%1B").replace("::", "%3A%3A").replace("##[", "%23%23[")
     )
-
-
-def _write_workflow_line(stream: TextIO, message: str) -> None:
-    # The runner consumes UTF-8 even when a Windows text stream uses another encoding.
-    if isinstance(stream, TextIOWrapper):
-        stream.flush()
-        stream.buffer.write((message + "\n").encode("utf-8"))
-        stream.flush()
-    else:
-        print(message, file=stream, flush=True)
-
-
-class GitHubActionsHandler(logging.Handler):
-    """Emit ``::notice::`` / ``::warning::`` / ``::error::`` workflow commands."""
-
-    def __init__(self, stream: TextIO | None = None) -> None:
-        super().__init__()
-        self._stream = stream if stream is not None else sys.stdout
-
-    @override
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            message = _escape_workflow_message(self.format(record))
-            match record.levelno:
-                case level if level >= logging.ERROR:
-                    message = f"::error::{message}"
-                case level if level >= logging.WARNING:
-                    message = f"::warning::{message}"
-                case level if level >= logging.INFO:
-                    message = f"::notice::{message}"
-                case _:
-                    message = _escape_workflow_text(message)
-            _write_workflow_line(self._stream, message)
-        except Exception:
-            self.handleError(record)
-
-
-class GitHubActionsReporter:
-    """Reporter that uses workflow commands, log groups, and the job summary."""
-
-    def __init__(self, logger: logging.Logger, stream: TextIO | None = None) -> None:
-        self._logger = logger
-        self._stream = stream if stream is not None else sys.stdout
-
-    def info(self, message: str) -> None:
-        """Report progress at the normal verbosity level."""
-        if not self._logger.isEnabledFor(logging.INFO):
-            return
-        _write_workflow_line(self._stream, _escape_workflow_text(message))
-
-    def notice(self, message: str) -> None:
-        """Report a user-facing informational notice."""
-        self._logger.info(message)
-
-    def warning(self, message: str) -> None:
-        """Report a recoverable problem."""
-        self._logger.warning(message)
-
-    def error(self, message: str) -> None:
-        """Report a failure."""
-        self._logger.error(message)
-
-    def add_summary(self, markdown: str) -> None:
-        """Append raw Markdown when GITHUB_STEP_SUMMARY is configured."""
-        if not os.environ.get("GITHUB_STEP_SUMMARY"):
-            return
-        gha.append_job_summary(markdown.removesuffix("\n"))
-
-    @contextmanager
-    def group(self, title: str) -> Generator[None]:
-        """Group related progress messages and close the group on failure."""
-        enabled = self._logger.isEnabledFor(logging.INFO)
-        if enabled:
-            _write_workflow_line(
-                self._stream, f"::group::{_escape_workflow_message(title)}"
-            )
-        try:
-            yield
-        finally:
-            if enabled:
-                _write_workflow_line(self._stream, "::endgroup::")

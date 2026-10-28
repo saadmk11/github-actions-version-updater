@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from packaging.version import Version
 
 from update_gha.models import (
@@ -181,6 +182,34 @@ def test_report_summary_deduplicates_actions(tmp_path: Path) -> None:
 def test_empty_report_text_summary() -> None:
     assert UpdateReport(files=()).text_summary() == "Everything is up-to-date."
     assert UpdateReport(files=()).has_updates is False
+
+
+@pytest.mark.parametrize(
+    ("location", "old_version"),
+    [("o/r", "v2"), ("o/r/subdir", "v1")],
+)
+def test_report_does_not_collapse_distinct_pins(
+    location: str, old_version: str
+) -> None:
+    action = _update(
+        new_version="v3",
+        resolved=ResolvedVersion(version="v3"),
+        update_version_with=UpdateVersionWith.LATEST_RELEASE_TAG,
+    )
+    other = action.model_copy(update={"location": location, "old_version": old_version})
+    report = UpdateReport(
+        files=(
+            FileUpdate(
+                path=Path("ci.yml"),
+                original="old",
+                updated="new",
+                actions=(action, other, action),
+            ),
+        )
+    )
+    assert report.action_updates == (action, other)
+    assert "Updated 2 actions in 1 files." in report.text_summary()
+    assert report.pull_request_body().count("* **[") == 2
 
 
 def test_release_tag_version_serializes_to_string() -> None:

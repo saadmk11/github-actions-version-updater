@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import tempfile
 from contextlib import chdir
+from importlib.util import find_spec
 from pathlib import Path
 from unittest.mock import patch
 
@@ -24,6 +25,9 @@ def main() -> None:
     ), "Smoke checks must import the installed package"
     action_extra = len(sys.argv) > 1 and sys.argv[1] == "action"
     assert has_action_extra() is action_extra
+    assert (find_spec("github_action_utils") is not None) is action_extra
+    assert (find_spec("git") is not None) is action_extra
+    assert "github_action_utils" not in sys.modules
     sha = "a" * 40
     seen: list[httpx2.Request] = []
 

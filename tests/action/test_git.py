@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import traceback
 from collections.abc import Sequence
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+import github_action_utils as gha
 import pytest
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 from tests.action.conftest import make_config
@@ -144,22 +146,36 @@ def _stub_run(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_run_writes_pr_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     output = tmp_path / "github_output"
-    settings = make_config(github_output=output)
+    output.write_text("existing=value\n", encoding="utf-8")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    settings = make_config()
     _stub_run(monkeypatch)
     monkeypatch.setattr(
         "update_gha.action.run.create_pull_request", lambda *_a, **_k: 9
     )
     monkeypatch.setattr("update_gha.action.run.add_reviewers", lambda *_a, **_k: None)
     monkeypatch.setattr("update_gha.action.run.add_labels", lambda *_a, **_k: None)
-    assert run(settings, silent_reporter(), body="### body\n") == 0
-    written = output.read_text(encoding="utf-8")
-    assert "GHA_UPDATE_PR_NUMBER=9\n" in written
-    assert "pull-request-number=9\n" in written
+    with patch.object(gha, "set_output", wraps=gha.set_output) as set_output:
+        assert run(settings, silent_reporter(), body="### body\n") == 0
+    assert [call.args for call in set_output.call_args_list] == [
+        ("GHA_UPDATE_PR_NUMBER", 9),
+        ("pull-request-number", 9),
+    ]
+    with monkeypatch.context() as environment:
+        environment.setenv("GITHUB_ENV", str(output))
+        assert gha.get_workflow_environment_variables() == {
+            "existing": "value",
+            "GHA_UPDATE_PR_NUMBER": "9",
+            "pull-request-number": "9",
+        }
 
 
+@pytest.mark.parametrize("output_path", [None, ""])
 def test_run_without_github_output_still_notifies_reviewers(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, output_path: str | None
 ) -> None:
+    if output_path is not None:
+        monkeypatch.setenv("GITHUB_OUTPUT", output_path)
     called: list[str] = []
     _stub_run(monkeypatch)
     monkeypatch.setattr(
@@ -173,13 +189,16 @@ def test_run_without_github_output_still_notifies_reviewers(
         "update_gha.action.run.add_labels",
         lambda *_a, **_k: called.append("labels"),
     )
-    assert (
-        run(make_config(github_output=None), silent_reporter(), body="### body\n") == 0
-    )
+    assert run(make_config(), silent_reporter(), body="### body\n") == 0
     assert called == ["reviewers", "labels"]
 
 
-def test_existing_pr_skips_reviewers(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_existing_pr_skips_outputs_reviewers_and_labels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "outputs"
+    output.write_text("existing=value\n")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
     called: list[str] = []
     _stub_run(monkeypatch)
     monkeypatch.setattr(
@@ -189,14 +208,37 @@ def test_existing_pr_skips_reviewers(monkeypatch: pytest.MonkeyPatch) -> None:
         "update_gha.action.run.add_reviewers",
         lambda *_a, **_k: called.append("r"),
     )
-    assert run(make_config(), silent_reporter(), body="### body\n") == 0
-    assert called == []
-
-
-def test_run_requires_token_and_repository() -> None:
-    assert (
-        run(make_config(token=None, repository=None), silent_reporter(), body="") == 1
+    monkeypatch.setattr(
+        "update_gha.action.run.add_labels",
+        lambda *_a, **_k: called.append("l"),
     )
+    assert (
+        run(
+            make_config(user_reviewers=("ada",), labels=("dependencies",)),
+            silent_reporter(),
+            body="### body\n",
+        )
+        == 0
+    )
+    assert called == []
+    assert output.read_text() == "existing=value\n"
+
+
+@pytest.mark.parametrize(
+    ("token", "repository"), [(None, "o/r"), ("token-token", None), (None, None)]
+)
+def test_run_requires_token_and_repository(
+    token: str | None, repository: str | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unexpected_open(reporter: Reporter) -> Repo:
+        pytest.fail("Git must not be accessed without a token and repository")
+
+    monkeypatch.setattr("update_gha.action.run.open_repo", unexpected_open)
+    reporter = RecordingReporter()
+    assert run(make_config(token=token, repository=repository), reporter, body="") == 1
+    assert reporter.errors == [
+        "A GitHub token and repository are required for --pull-request."
+    ]
 
 
 def test_run_rejects_main_branch() -> None:
@@ -237,28 +279,31 @@ def test_prepare_rejects_dirty_tracked_worktree(
         ("", ""),
     ],
 )
-def test_run_git_reports_stdout(stdout: str | bytes, expected: str) -> None:
+def test_run_git_returns_stdout_without_logging_it(
+    stdout: str | bytes, expected: str
+) -> None:
     repo = MagicMock(spec=Repo)
     reporter = RecordingReporter()
     repo.git.execute.return_value = stdout
     assert git.run_git(repo, reporter, "status") == expected
-    if expected:
-        assert reporter.infos == [expected]
-    else:
-        assert reporter.infos == []
+    assert reporter.infos == []
 
 
-def test_run_git_reports_stderr_and_exits() -> None:
+def test_run_git_reports_operation_and_exits() -> None:
     repo = MagicMock(spec=Repo)
     reporter = RecordingReporter()
-    repo.git.execute.side_effect = GitCommandError("git status", 1, stderr="fail")
+    repo.git.execute.side_effect = GitCommandError(
+        "git status", 1, stderr="private diagnostic"
+    )
     with pytest.raises(SystemExit) as exited:
         git.run_git(repo, reporter, "status")
     assert exited.value.code == 1
-    assert any("fail" in message for message in reporter.errors)
+    assert len(reporter.errors) == 1
+    assert "Git status failed (exit 1)" in reporter.errors[0]
+    assert "private diagnostic" not in reporter.errors[0]
 
 
-def test_run_git_decodes_bytes_stderr() -> None:
+def test_run_git_preserves_fallback_exit_code() -> None:
     repo = MagicMock(spec=Repo)
     repo.git.execute.side_effect = GitCommandError(
         "git status", "bad", stderr=b"fail-bytes"
@@ -478,6 +523,7 @@ def test_run_creates_named_branch_from_resolved_base(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     seen: dict[str, str | bool] = {}
+    pushed: list[str | None] = []
 
     def capture(
         _repo: Repo,
@@ -486,19 +532,36 @@ def test_run_creates_named_branch_from_resolved_base(
         base_branch: str,
         new_branch: str,
         reset: bool,
-    ) -> None:
+    ) -> str:
         seen.update(base_branch=base_branch, new_branch=new_branch, reset=reset)
+        return "a" * 40
+
+    def commit(
+        repo: Repo,
+        config: Configuration,
+        reporter: Reporter,
+        *,
+        branch: str,
+        force_push: bool,
+        paths: Sequence[Path],
+        lease_sha: str | None = None,
+    ) -> None:
+        assert branch == "updates"
+        assert force_push is True
+        assert paths == WORKFLOW_PATHS
+        pushed.append(lease_sha)
 
     monkeypatch.setattr("update_gha.action.run.open_repo", lambda _r: _mock_repo())
     monkeypatch.setattr("update_gha.action.run.create_branch", capture)
-    monkeypatch.setattr("update_gha.action.run.commit_and_push", lambda *_a, **_k: None)
+    monkeypatch.setattr("update_gha.action.run.commit_and_push", commit)
     monkeypatch.setattr(
         "update_gha.action.run.create_pull_request", lambda *_a, **_k: None
     )
     settings = make_config(
         github_ref="refs/heads/develop", pull_request_branch="updates"
     )
-    assert run(settings, silent_reporter(), body="x") == 0
+    assert run(settings, silent_reporter(), body="x", paths=WORKFLOW_PATHS) == 0
+    assert pushed == ["a" * 40]
     assert seen == {
         "base_branch": "develop",
         "new_branch": "updates",
@@ -560,3 +623,20 @@ def test_run_uses_local_branch_when_github_ref_missing(
 def test_as_text_accepts_none_and_other_values() -> None:
     assert git._as_text(None) == ""
     assert git._as_text(12) == "12"
+
+
+@pytest.mark.parametrize("operation", ["run", "fetch"])
+def test_git_failure_tracebacks_do_not_reveal_raw_stderr(operation: str) -> None:
+    secret = "fixture-sensitive-token"
+    repo = _mock_repo()
+    repo.git.execute.side_effect = GitCommandError("git", 7, stderr=secret)
+    reporter = RecordingReporter()
+    with pytest.raises(SystemExit) as error:
+        if operation == "fetch":
+            git.fetch_remote_branch(repo, reporter, "updates")
+        else:
+            git.run_git(repo, reporter, "status")
+    assert error.value.code == 7
+    assert secret not in "".join(reporter.errors)
+    assert "exit 7" in reporter.errors[0]
+    assert secret not in "".join(traceback.format_exception(error.value))

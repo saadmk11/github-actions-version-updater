@@ -72,10 +72,12 @@ class NearestPyprojectSettingsSource(PyprojectTomlConfigSettingsSource):
     """Read ``[tool.update-gha]`` walking up from cwd."""
 
     def __init__(self, settings_cls: type[BaseSettings]) -> None:
+        """Load settings from the nearest pyproject.toml at or above cwd."""
         super().__init__(settings_cls, toml_file=_find_pyproject(Path.cwd()))
 
 
 def _find_pyproject(start: Path) -> Path | None:
+    """Find pyproject.toml in the starting directory or its parents, if present."""
     current = start.resolve()
     for directory in (current, *current.parents):
         if (candidate := directory / "pyproject.toml").is_file():
@@ -144,7 +146,6 @@ class Configuration(BaseSettings):
     github_ref: str = Field(default="", validation_alias="GITHUB_REF")
     github_ref_name: str = Field(default="", validation_alias="GITHUB_REF_NAME")
     github_base_ref: str = Field(default="", validation_alias="GITHUB_BASE_REF")
-    github_output: Path | None = Field(default=None, validation_alias="GITHUB_OUTPUT")
 
     @classmethod
     def settings_customise_sources(

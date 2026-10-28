@@ -70,7 +70,7 @@ def create_branch(
 def fetch_remote_branch(repo: Repo, reporter: Reporter, branch: str) -> str | None:
     """Fetch the update branch, returning its tip or None if it does not exist."""
     try:
-        stdout = repo.git.execute(
+        repo.git.execute(
             [
                 "git",
                 "fetch",
@@ -90,11 +90,12 @@ def fetch_remote_branch(repo: Repo, reporter: Reporter, branch: str) -> str | No
                 f"refs/remotes/origin/{branch}",
             )
             return None
-        reporter.error(message)
         status = exc.status
-        raise SystemExit(status if isinstance(status, int) else 1) from exc
-    if text := _as_text(stdout):
-        reporter.info(text.rstrip())
+        reporter.error(
+            f"Git fetch failed (exit {status}); "
+            "check checkout credentials and branch permissions."
+        )
+        raise SystemExit(status if isinstance(status, int) else 1) from None
     return run_git(
         repo,
         reporter,
@@ -145,6 +146,7 @@ def commit_and_push(
 def _repo_relative_paths(
     repo: Repo, paths: Sequence[Path], reporter: Reporter
 ) -> tuple[str, ...]:
+    """Return working-tree-relative paths, exiting for invalid locations."""
     if repo.working_tree_dir is None:
         reporter.error("The git repository has no working tree.")
         raise SystemExit(1)
@@ -160,6 +162,7 @@ def _repo_relative_paths(
 
 
 def _as_text(value: object) -> str:
+    """Decode Git output bytes and convert None to an empty string."""
     if isinstance(value, bytes):
         return value.decode()
     if isinstance(value, str):
@@ -168,14 +171,14 @@ def _as_text(value: object) -> str:
 
 
 def run_git(repo: Repo, reporter: Reporter, *args: str) -> str:
-    """Run Git, report its output, and preserve a failing command's exit status."""
+    """Return Git output and report failures without exposing raw diagnostics."""
     try:
         stdout = repo.git.execute(["git", *args])
     except GitCommandError as exc:
-        reporter.error((_as_text(exc.stderr) or str(exc)).rstrip())
         status = exc.status
-        raise SystemExit(status if isinstance(status, int) else 1) from exc
-    text = _as_text(stdout).rstrip()
-    if text:
-        reporter.info(text)
-    return text
+        reporter.error(
+            f"Git {args[0]} failed (exit {status}); "
+            "check checkout credentials and branch permissions."
+        )
+        raise SystemExit(status if isinstance(status, int) else 1) from None
+    return _as_text(stdout).rstrip()

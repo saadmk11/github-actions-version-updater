@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+import github_action_utils as gha
 from git import Repo
 
 from update_gha.action.git import (
@@ -96,7 +97,7 @@ def run(
         body=body,
     )
     if number is not None:
-        write_outputs(config, number)
+        write_outputs(number)
         add_reviewers(
             config,
             reporter,
@@ -113,10 +114,9 @@ def run(
     return 0
 
 
-def write_outputs(config: Configuration, number: int) -> None:
-    """Append both public pull request number outputs when a path is configured."""
-    if (path := config.github_output) is None:
+def write_outputs(number: int) -> None:
+    """Publish both pull request number outputs through github-action-utils."""
+    if not gha.vars.github.output:
         return
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(f"GHA_UPDATE_PR_NUMBER={number}\n")
-        handle.write(f"pull-request-number={number}\n")
+    gha.set_output("GHA_UPDATE_PR_NUMBER", number)
+    gha.set_output("pull-request-number", number)
