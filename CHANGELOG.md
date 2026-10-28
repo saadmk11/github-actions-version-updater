@@ -1,6 +1,6 @@
 # Version: v1.0.3
 
-* Apply release-type filters consistently across tags, branches, and commit SHAs. Resolve moving tags through their commits using full release versions, and accept full version tags without a GitHub Release entry.
+* Apply release-type filters consistently across tags, branches, and commit SHAs. Resolve moving tags through their commits using full release versions.
 * Allow switching between a release tag and its commit SHA when the release is already current.
 * Remove incorrect SemVer warnings for SHA and branch pins, and report absent updates without warnings.
 * Exclude unchanged and unrewritable pins from update counts and pull-request descriptions.
